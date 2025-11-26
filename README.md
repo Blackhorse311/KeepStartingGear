@@ -65,18 +65,51 @@ SPT/
 
 ### Configuration
 
-Access mod settings via **F12** (BepInEx Configuration Manager) or edit the config file directly:
+Access mod settings via **F12** (BepInEx Configuration Manager) or edit the config file directly.
+
+Config file location: `BepInEx/config/com.blackhorse311.keepstartinggear.cfg`
+
+#### Keybind Settings
 
 | Setting | Default | Description |
 |---------|---------|-------------|
 | Snapshot Key | F8 | Primary key for snapshot |
 | Require Ctrl | true | Ctrl must be held |
 | Require Alt | true | Alt must be held |
-| Include Secure Container | true | Whether to include secure container contents |
-| Include Pockets | true | Whether to include pocket contents |
-| Show Notifications | true | Display on-screen notifications |
+| Require Shift | false | Shift must be held |
 
-Config file location: `BepInEx/config/com.blackhorse311.keepstartinggear.cfg`
+**Default keybind: Ctrl+Alt+F8**
+
+#### Inventory Slot Settings
+
+Every equipment slot can be individually enabled or disabled. All default to **true** (included in snapshot).
+
+| Slot | Description |
+|------|-------------|
+| First Primary Weapon | Main weapon (rifles, SMGs) |
+| Second Primary Weapon | Backup weapon |
+| Holster | Pistol/sidearm |
+| Scabbard | Melee weapon |
+| Headwear | Helmets, hats |
+| Earpiece | Headsets, comtacs |
+| Face Cover | Masks, balaclavas |
+| Eyewear | Glasses, goggles |
+| Arm Band | Identification bands |
+| Tactical Vest | Chest rigs, plate carriers |
+| Armor Vest | Body armor |
+| Pockets | Built-in pocket storage |
+| Backpack | Main loot storage |
+| Secured Container | Keeps items on death |
+| Compass | Navigation |
+| Special Slot 1-3 | Injectors, stims |
+
+#### Logging Settings
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Debug Mode | false | Enable verbose logging |
+| Log Snapshot Creation | true | Log when snapshots are created |
+| Log Snapshot Restoration | true | Log when snapshots are restored |
 
 ---
 
