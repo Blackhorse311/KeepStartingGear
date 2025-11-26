@@ -71,14 +71,9 @@ Config file location: `BepInEx/config/com.blackhorse311.keepstartinggear.cfg`
 
 #### Keybind Settings
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| Snapshot Key | F8 | Primary key for snapshot |
-| Require Ctrl | true | Ctrl must be held |
-| Require Alt | true | Alt must be held |
-| Require Shift | false | Shift must be held |
-
-**Default keybind: Ctrl+Alt+F8**
+| Setting | Default |
+|---------|---------|
+| Snapshot Keybind | Ctrl+Alt+F8 |
 
 #### Inventory Slot Settings
 
