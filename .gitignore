@@ -22,20 +22,17 @@ packages/
 Thumbs.db
 .DS_Store
 
-# Reference/Sample files (not part of the mod)
-Files for Claude/
+# Reference/Sample files
+Files for */
 
 # Snapshots (user data)
 snapshots/
 *.json.bak
 
-# Old documentation files
+# Development files
 PROJECT_STATUS.md
 IMPLEMENTATION_PLAN.md
-
-# Development/session files
-CONTEXT_FOR_CLAUDE.md
-TESTING_GUIDE.md
-TESTING_SESSION*.md
+CONTEXT_FOR_*.md
+TESTING_*.md
 .claude/
 
