@@ -1,0 +1,97 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Keep Starting Gear Configuration",
+  "description": "Configuration file for the Blackhorse311-KeepStartingGear mod",
+
+  "enabled": true,
+
+  "keybind": {
+    "description": "Keybind configuration for snapshot feature (client-side)",
+    "comment": "Set the key combination to trigger inventory snapshots",
+    "key": "F8",
+    "requiresCtrl": true,
+    "requiresAlt": true,
+    "requiresShift": false
+  },
+
+  "snapshot": {
+    "description": "Snapshot behavior configuration",
+
+    "inventorySlots": {
+      "description": "FULL CUSTOMIZATION: Toggle any slot on/off as you prefer",
+      "comment": "By DEFAULT, ALL slots are saved (all set to true). Set any slot to 'false' to exclude it from snapshots.",
+      "note": "This gives YOU complete control - exclude your backpack, keep only your weapon, or save everything. Your choice!",
+
+      "weapons": {
+        "FirstPrimaryWeapon": true,
+        "SecondPrimaryWeapon": true,
+        "Holster": true,
+        "Scabbard": true
+      },
+
+      "gear": {
+        "Headwear": true,
+        "Earpiece": true,
+        "FaceCover": true,
+        "Eyewear": true,
+        "ArmBand": true
+      },
+
+      "armor": {
+        "TacticalVest": true,
+        "ArmorVest": true
+      },
+
+      "containers": {
+        "Pockets": true,
+        "Backpack": true,
+        "SecuredContainer": true
+      },
+
+      "special": {
+        "Compass": true,
+        "SpecialSlot1": true,
+        "SpecialSlot2": true,
+        "SpecialSlot3": true
+      }
+    },
+
+    "allowOnePerMap": true,
+    "clearSnapshotOnExtraction": true
+  },
+
+  "notifications": {
+    "description": "Toast notification settings (client-side)",
+
+    "enabled": true,
+    "displayDurationSeconds": 5,
+    "position": {
+      "horizontalAlignment": "center",
+      "verticalOffset": 100
+    },
+
+    "colors": {
+      "success": "#00FF00",
+      "error": "#FF0000",
+      "info": "#00AAFF",
+      "warning": "#FFAA00"
+    },
+
+    "messages": {
+      "snapshotSaved": "Inventory snapshot saved!",
+      "snapshotFailed": "Failed to save snapshot!",
+      "snapshotLimitReached": "Snapshot already taken on this map!",
+      "snapshotRestored": "Inventory restored from snapshot!",
+      "snapshotCleared": "Snapshot cleared after successful extraction!"
+    }
+  },
+
+  "logging": {
+    "description": "Logging configuration for debugging",
+
+    "enableDebugMode": false,
+    "logSnapshotCreation": true,
+    "logSnapshotRestoration": true,
+    "logInventoryChanges": false
+  }
+}

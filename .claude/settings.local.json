@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xcopy:*)",
+      "WebFetch(domain:forge.sp-tarkov.com)",
+      "Bash(\"I:\\spt-dev\\Blackhorse311.KeepStartingGear4\\Blackhorse311.KeepStartingGear\\CHANGELOG.md\")",
+      "Bash(cmd /c \"echo. > \"\"I:\\spt-dev\\Blackhorse311.KeepStartingGear4\\Blackhorse311.KeepStartingGear\\CHANGELOG.md\"\"\")",
+      "Bash(cmd /c \"echo. > \"\"I:\\spt-dev\\Blackhorse311.KeepStartingGear4\\Blackhorse311.KeepStartingGear\\LICENSE\"\"\")",
+      "Bash(cmd /c \"copy NUL \"\"I:\\spt-dev\\Blackhorse311.KeepStartingGear4\\Blackhorse311.KeepStartingGear\\LICENSE\"\"\")",
+      "Bash(cmd /c dir \"I:\\spt-dev\\Blackhorse311.KeepStartingGear4\\Blackhorse311.KeepStartingGear\")",
+      "Bash(git --version:*)",
+      "Bash(git init:*)",
+      "Bash(git config:*)",
+      "Bash(git add:*)",
+      "Bash(cmd /c dir:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <RootNamespace>Blackhorse311.KeepStartingGear.Server</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <OutputType>Library</OutputType>
+    <Version>1.0.0</Version>
+    <Authors>Blackhorse311</Authors>
+    <Description>Server-side component for Keep Starting Gear mod - handles inventory restoration on raid end</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- SPT Server NuGet packages -->
+    <PackageReference Include="SPTarkov.Common" Version="4.0.2" />
+    <PackageReference Include="SPTarkov.DI" Version="4.0.2" />
+    <PackageReference Include="SPTarkov.Server.Core" Version="4.0.2" />
+    <PackageReference Include="SPTarkov.Reflection" Version="4.0.2" />
+  </ItemGroup>
+
+  <!-- Copy output to SPT user/mods folder -->
+  <Target Name="CopyToMods" AfterTargets="Build">
+    <PropertyGroup>
+      <ModOutputDir>H:\SPT\SPT\user\mods\Blackhorse311-KeepStartingGear</ModOutputDir>
+    </PropertyGroup>
+    <MakeDir Directories="$(ModOutputDir)" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ModOutputDir)" />
+    <Message Text="Copied $(TargetFileName) to $(ModOutputDir)" Importance="High" />
+  </Target>
+</Project>

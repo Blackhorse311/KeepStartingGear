@@ -1,0 +1,130 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!--
+      Target .NET Framework 4.7.1 to match SPT 4.0.6 BepInEx requirements
+    -->
+    <TargetFramework>net471</TargetFramework>
+
+    <!--
+      Mod identification and versioning
+    -->
+    <Version>1.0.0</Version>
+    <Authors>Blackhorse311</Authors>
+    <Company>Blackhorse311</Company>
+    <Product>Keep Starting Gear</Product>
+    <Description>A BepInEx mod for SPT that allows players to save and restore their inventory after unsuccessful raids</Description>
+
+    <!--
+      Build configuration
+    -->
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+    <!--
+      Output configuration - Build to BepInEx plugins folder
+    -->
+    <OutputPath>..\..\bin\BepInEx\plugins\Blackhorse311-KeepStartingGear\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+
+    <!--
+      Documentation generation
+    -->
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      BepInEx Core References
+    -->
+    <Reference Include="BepInEx">
+      <HintPath>H:\SPT\BepInEx\core\BepInEx.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+
+    <Reference Include="0Harmony">
+      <HintPath>H:\SPT\BepInEx\core\0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+
+    <!--
+      SPT References
+    -->
+    <Reference Include="spt-reflection">
+      <HintPath>H:\SPT\BepInEx\plugins\spt\spt-reflection.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+
+    <Reference Include="spt-custom">
+      <HintPath>H:\SPT\BepInEx\plugins\spt\spt-custom.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+
+    <Reference Include="spt-common">
+      <HintPath>H:\SPT\BepInEx\plugins\spt\spt-common.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+
+    <!--
+      EFT Game References
+    -->
+    <Reference Include="Assembly-CSharp">
+      <HintPath>H:\SPT\EscapeFromTarkov_Data\Managed\Assembly-CSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+
+    <Reference Include="Comfort">
+      <HintPath>H:\SPT\EscapeFromTarkov_Data\Managed\Comfort.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+
+    <Reference Include="Comfort.Unity">
+      <HintPath>H:\SPT\EscapeFromTarkov_Data\Managed\Comfort.Unity.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+
+    <!--
+      Unity Engine References
+    -->
+    <Reference Include="UnityEngine">
+      <HintPath>H:\SPT\EscapeFromTarkov_Data\Managed\UnityEngine.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>H:\SPT\EscapeFromTarkov_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+
+    <Reference Include="UnityEngine.InputLegacyModule">
+      <HintPath>H:\SPT\EscapeFromTarkov_Data\Managed\UnityEngine.InputLegacyModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+
+    <Reference Include="UnityEngine.IMGUIModule">
+      <HintPath>H:\SPT\EscapeFromTarkov_Data\Managed\UnityEngine.IMGUIModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+
+    <Reference Include="UnityEngine.TextRenderingModule">
+      <HintPath>H:\SPT\EscapeFromTarkov_Data\Managed\UnityEngine.TextRenderingModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+
+    <!--
+      Newtonsoft.Json for JSON serialization
+    -->
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>H:\SPT\EscapeFromTarkov_Data\Managed\Newtonsoft.Json.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <!--
+    Post-build event to copy DLL to SPT BepInEx plugins folder
+  -->
+  <Target Name="PostBuild" AfterTargets="PostBuildEvent">
+    <Exec Command="xcopy /Y /I &quot;$(TargetPath)&quot; &quot;H:\SPT\BepInEx\plugins\Blackhorse311-KeepStartingGear\&quot;" />
+  </Target>
+
+</Project>

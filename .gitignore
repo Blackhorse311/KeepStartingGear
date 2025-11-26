@@ -1,0 +1,35 @@
+# Build outputs
+bin/
+obj/
+*.dll
+*.pdb
+*.exe
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.cache
+
+# Rider
+.idea/
+
+# NuGet
+packages/
+*.nupkg
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Reference/Sample files (not part of the mod)
+Files for Claude/
+
+# Snapshots (user data)
+snapshots/
+*.json.bak
+
+# Old documentation files
+PROJECT_STATUS.md
+IMPLEMENTATION_PLAN.md
+
