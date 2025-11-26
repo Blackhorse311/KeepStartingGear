@@ -58,7 +58,7 @@ SPT/
 ## Usage
 
 1. **Enter a raid** with the gear you want to protect
-2. **Press F9** (default keybind) to create a snapshot of your current equipment
+2. **Press Ctrl+Alt+F8** (default keybind) to create a snapshot of your current equipment
 3. A green notification will confirm: "Snapshot saved for [map name]"
 4. If you **die in raid**, your equipment will be automatically restored
 5. A blue notification will confirm restoration when you return to the main menu
@@ -69,7 +69,9 @@ Access mod settings via **F12** (BepInEx Configuration Manager) or edit the conf
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| Snapshot Keybind | F9 | Key to press to create a snapshot |
+| Snapshot Key | F8 | Primary key for snapshot |
+| Require Ctrl | true | Ctrl must be held |
+| Require Alt | true | Alt must be held |
 | Include Secure Container | true | Whether to include secure container contents |
 | Include Pockets | true | Whether to include pocket contents |
 | Show Notifications | true | Display on-screen notifications |
