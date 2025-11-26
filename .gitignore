@@ -33,3 +33,9 @@ snapshots/
 PROJECT_STATUS.md
 IMPLEMENTATION_PLAN.md
 
+# Development/session files
+CONTEXT_FOR_CLAUDE.md
+TESTING_GUIDE.md
+TESTING_SESSION*.md
+.claude/
+
