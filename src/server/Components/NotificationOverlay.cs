@@ -74,7 +74,10 @@ public class NotificationOverlay : MonoBehaviour
         Warning,
 
         /// <summary>Red notification for errors or failures</summary>
-        Error
+        Error,
+
+        /// <summary>Blue notification for informational messages</summary>
+        Info
     }
 
     /// <summary>
@@ -174,6 +177,12 @@ public class NotificationOverlay : MonoBehaviour
 
     /// <summary>Light red/pink text for error notifications</summary>
     private static readonly Color ErrorTextColor = new Color(1f, 0.7f, 0.7f, 1f);
+
+    /// <summary>Dark blue background for info notifications</summary>
+    private static readonly Color InfoColor = new Color(0.1f, 0.3f, 0.6f, 0.9f);
+
+    /// <summary>Light blue text for info notifications</summary>
+    private static readonly Color InfoTextColor = new Color(0.7f, 0.85f, 1f, 1f);
 
     // ========================================================================
     // Unity Lifecycle Methods
@@ -282,6 +291,17 @@ public class NotificationOverlay : MonoBehaviour
     public static void ShowError(string message, float duration = DefaultDuration)
     {
         Show(message, NotificationType.Error, duration);
+    }
+
+    /// <summary>
+    /// Displays an info notification with blue color scheme.
+    /// Use for: informational messages, mode reminders, keybind hints.
+    /// </summary>
+    /// <param name="message">The message to display (supports \n for newlines)</param>
+    /// <param name="duration">How long to show before fading (default: 3 seconds)</param>
+    public static void ShowInfo(string message, float duration = DefaultDuration)
+    {
+        Show(message, NotificationType.Info, duration);
     }
 
     /// <summary>
@@ -416,6 +436,10 @@ public class NotificationOverlay : MonoBehaviour
             case NotificationType.Error:
                 bgColor = ErrorColor;
                 textColor = ErrorTextColor;
+                break;
+            case NotificationType.Info:
+                bgColor = InfoColor;
+                textColor = InfoTextColor;
                 break;
             default:
                 bgColor = SuccessColor;

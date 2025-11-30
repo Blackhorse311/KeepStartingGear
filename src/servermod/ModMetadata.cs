@@ -69,14 +69,15 @@ public record ModMetadata : AbstractModMetadata
 
     /// <summary>
     /// List of additional contributors who helped with development.
+    /// Bug hunters and testers who helped improve the mod.
     /// </summary>
-    public override List<string>? Contributors { get; init; } = [];
+    public override List<string>? Contributors { get; init; } = ["Troyoza", "Wolthon", "rSlade"];
 
     /// <summary>
     /// Current version of the mod using Semantic Versioning.
     /// Format: MAJOR.MINOR.PATCH
     /// </summary>
-    public override SemanticVersioning.Version Version { get; init; } = new("1.0.0");
+    public override SemanticVersioning.Version Version { get; init; } = new("1.1.0");
 
     /// <summary>
     /// Range of compatible SPT server versions.
@@ -99,7 +100,7 @@ public record ModMetadata : AbstractModMetadata
     /// <summary>
     /// URL for the mod's homepage or repository.
     /// </summary>
-    public override string? Url { get; init; } = "https://github.com/Blackhorse311";
+    public override string? Url { get; init; } = "https://github.com/Blackhorse311/KeepStartingGear";
 
     /// <summary>
     /// Whether this mod includes asset bundles.

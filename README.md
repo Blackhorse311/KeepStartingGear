@@ -1,28 +1,43 @@
 # Keep Starting Gear
 
-**Version:** 1.0.0
+**Version:** 1.1.0
 **Author:** Blackhorse311
 **License:** MIT
-**SPT Compatibility:** 4.0.x (tested on 4.0.6)
+**SPT Compatibility:** 4.0.x (tested on 4.0.7)
 
-A mod for SPT that allows players to save their equipment before a raid and have it restored if they die.
+A mod for SPT that automatically protects your starting gear. Die in raid? Your equipment is restored. No more gear fear!
 
 ---
 
 ## Features
 
-- **Snapshot System**: Press a keybind in-raid to capture your current equipment
-- **Automatic Restoration**: If you die, your saved equipment is automatically restored
-- **No Run-Through Penalty**: Restoration happens server-side, avoiding the "Run-Through" status
-- **Per-Map Snapshots**: One snapshot per map - taking a new snapshot replaces the previous one
-- **Modded Items Support**: Works with modded weapons, armor, and equipment
-- **Visual Feedback**: Large colored notifications confirm snapshot creation and restoration
+### Core Features
+- **Automatic Snapshots**: Your gear is automatically saved when you enter a raid (default behavior)
+- **Death Protection**: If you die, your saved equipment is automatically restored
+- **Server-Side Restoration**: No "Run-Through" penalty - restoration happens before death processing
+- **Modded Items Support**: Works with any modded weapons, armor, and equipment
+- **Sound Feedback**: Plays a satisfying sound when snapshots are taken
+
+### Snapshot Modes
+Choose how you want snapshots to work:
+- **Auto Only** (Default): Automatic snapshot at raid start, no manual snapshots
+- **Auto + Manual**: Automatic snapshot at raid start, plus manual snapshots via keybind
+- **Manual Only**: Full control - only saves when you press the keybind
+
+### Protection Options
+- **FIR Protection**: Optionally exclude Found-in-Raid items from snapshots (prevents duplication exploits)
+- **Insurance Integration**: Optionally exclude insured items (let insurance handle them normally)
+- **Map Transfer Protection**: Choose whether to re-snapshot when transferring between maps or keep original
+
+### Quick Setup Presets
+- **Casual**: Maximum protection with minimal hassle - auto-snapshot, all items protected
+- **Hardcore**: More risk, more control - manual snapshots only, FIR & insured items excluded
 
 ---
 
 ## Requirements
 
-- SPT 4.0.x (tested on 4.0.6)
+- SPT 4.0.x (tested on 4.0.7)
 - BepInEx 5.x (included with SPT)
 
 ---
@@ -57,27 +72,58 @@ SPT/
 
 ## Usage
 
-1. **Enter a raid** with the gear you want to protect
-2. **Press Ctrl+Alt+F8** (default keybind) to create a snapshot of your current equipment
-3. A green notification will confirm: "Snapshot saved for [map name]"
-4. If you **die in raid**, your equipment will be automatically restored
-5. A blue notification will confirm restoration when you return to the main menu
+### Default Behavior (Casual Mode)
+1. **Enter a raid** - your gear is automatically saved
+2. A green notification confirms: "Auto-Snapshot Saved - X items protected"
+3. If you **die**, your equipment is automatically restored
+4. If you **extract successfully**, the snapshot is cleared
 
-### Configuration
+### Manual Mode
+1. **Enter a raid** with the gear you want to protect
+2. **Press Ctrl+Alt+F8** (default keybind) to create a snapshot
+3. A green notification confirms the snapshot
+4. If you **die**, your saved equipment is restored
+
+---
+
+## Configuration
 
 Access mod settings via **F12** (BepInEx Configuration Manager) or edit the config file directly.
 
 Config file location: `BepInEx/config/com.blackhorse311.keepstartinggear.cfg`
 
-#### Keybind Settings
+### 0. Quick Setup
 
-| Setting | Default |
-|---------|---------|
-| Snapshot Keybind | Ctrl+Alt+F8 |
+| Setting | Options | Description |
+|---------|---------|-------------|
+| Configuration Preset | Casual / Hardcore / Custom | Quick setup for different playstyles |
 
-#### Inventory Slot Settings
+### 1. General
 
-Every equipment slot can be individually enabled or disabled. All default to **true** (included in snapshot).
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Enable KSG Mod | true | Master switch to enable/disable the mod |
+
+### 2. Snapshot Behavior
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Snapshot Mode | Auto Only | When snapshots are taken (Auto Only / Auto+Manual / Manual Only) |
+| Protect FIR Items | false | Exclude Found-in-Raid items from snapshots |
+| Exclude Insured Items | false | Let insurance handle insured items |
+| Re-Snapshot on Map Transfer | false | Take new snapshot when transferring maps |
+| Play Snapshot Sound | true | Play sound effect when snapshot is taken |
+| Warn on Snapshot Overwrite | true | Show warning when overwriting existing snapshot |
+
+### 3. Keybind
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Manual Snapshot Keybind | Ctrl+Alt+F8 | Keybind for manual snapshots |
+
+### 4. Inventory Slots
+
+Every equipment slot can be individually enabled or disabled. All default to **true**.
 
 | Slot | Description |
 |------|-------------|
@@ -94,11 +140,11 @@ Every equipment slot can be individually enabled or disabled. All default to **t
 | Armor Vest | Body armor |
 | Pockets | Built-in pocket storage |
 | Backpack | Main loot storage |
-| Secured Container | Keeps items on death |
+| Secured Container | Secure container contents |
 | Compass | Navigation |
 | Special Slot 1-3 | Injectors, stims |
 
-#### Logging Settings
+### 5. Logging
 
 | Setting | Default | Description |
 |---------|---------|-------------|
@@ -110,58 +156,51 @@ Every equipment slot can be individually enabled or disabled. All default to **t
 
 ## How It Works
 
-### Client Component (BepInEx Plugin)
+### Automatic Mode (Default)
+1. When you enter a raid, your current gear is automatically captured
+2. The snapshot is saved as a JSON file
+3. If you die, the server restores your gear before normal death processing
+4. If you extract, the snapshot is cleared
 
-1. When you press the snapshot keybind, the client captures your entire inventory
-2. The snapshot is saved as a JSON file in the `snapshots` folder
-3. When a raid ends, the client notifies you of the outcome
+### Manual Mode
+1. You press the keybind to capture your current gear
+2. Only the gear at that moment is protected
+3. Items picked up after the snapshot are NOT restored on death
 
-### Server Component (SPT Mod)
+### Map Transfer Behavior
+When transferring between maps (e.g., Ground Zero → Streets):
+- **Default**: Keeps your original snapshot (first raid's starting gear)
+- **Optional**: Re-snapshot with current gear at transfer
 
-1. When a raid ends, the server checks if you died
-2. If a snapshot exists for that map, it restores your inventory
-3. The restoration happens before death penalties are applied
-4. This avoids the "Run-Through" status that would occur with client-side restoration
+### Mid-Raid Protection
+Settings are locked when a raid starts. Changing snapshot mode mid-raid shows a warning and has no effect until the next raid. This prevents exploits like switching to manual mode after losing items.
 
 ---
 
-## Snapshot Details
+## Compatibility
 
-Snapshots include:
-- All equipment slots (head, armor, vest, backpack, weapons, etc.)
-- Secure container and contents
-- Pockets and contents
-- All nested items (items inside containers, magazines in weapons, etc.)
-- Item durability, ammo counts, and other properties
-- Modded items and their configurations
-
-Snapshots are stored per-map. Taking a new snapshot on the same map replaces the previous one.
+- **SPT Version**: 4.0.x (tested on 4.0.7)
+- **Fika**: Not tested - may not work in multiplayer scenarios
+- **Other Mods**: Should be compatible with most mods, including mods that add custom items
 
 ---
 
 ## Troubleshooting
 
 ### Snapshot not saving
-- Ensure you're in an active raid (not in menus)
-- Check that the keybind isn't conflicting with other mods
+- Ensure the mod is enabled in F12 settings
+- Check that you're in Manual or Auto+Manual mode if using keybind
 - Look for errors in the BepInEx console
 
 ### Inventory not restoring
 - Verify both client and server components are installed
 - Check the SPT server console for error messages
-- Ensure a snapshot exists for the map you died on
+- Ensure a snapshot exists (check the snapshots folder)
 
-### Modded items not restoring correctly
-- The mod uses template IDs, so modded items should work
-- If issues occur, check that the modded item's mod is also installed
-
----
-
-## Compatibility
-
-- **SPT Version**: 4.0.x
-- **Fika**: Not tested - may not work in multiplayer scenarios
-- **Other Mods**: Should be compatible with most mods
+### Items missing from snapshot
+- Check that the relevant inventory slot is enabled in settings
+- FIR items are excluded if "Protect FIR Items" is enabled
+- Insured items are excluded if "Exclude Insured Items" is enabled
 
 ---
 
@@ -182,46 +221,6 @@ Snapshots are stored per-map. Taking a new snapshot on the same map replaces the
 ```bash
 dotnet build src/server/Blackhorse311.KeepStartingGear.csproj
 dotnet build src/servermod/Blackhorse311.KeepStartingGear.Server.csproj
-```
-
----
-
-## Project Structure
-
-```
-Blackhorse311.KeepStartingGear/
-├── src/
-│   ├── server/                          # Client-side BepInEx plugin
-│   │   ├── Plugin.cs                    # Main entry point
-│   │   ├── Configuration/
-│   │   │   └── Settings.cs              # BepInEx configuration
-│   │   ├── Components/
-│   │   │   ├── KeybindMonitor.cs        # In-raid keybind handling
-│   │   │   └── NotificationOverlay.cs   # Visual notifications
-│   │   ├── Services/
-│   │   │   ├── InventoryService.cs      # Inventory capture logic
-│   │   │   ├── SnapshotManager.cs       # Snapshot persistence
-│   │   │   └── ProfileService.cs        # Profile manipulation
-│   │   ├── Models/
-│   │   │   ├── InventorySnapshot.cs     # Snapshot data structure
-│   │   │   └── SerializedInventory.cs   # Serialization models
-│   │   └── Patches/
-│   │       ├── PatchManager.cs          # Patch registration
-│   │       ├── GameStartPatch.cs        # Raid start hook
-│   │       ├── PostRaidInventoryPatch.cs# Post-raid hook
-│   │       └── RaidEndPatch.cs          # Raid end processing
-│   │
-│   └── servermod/                       # Server-side SPT mod
-│       ├── KeepStartingGearMod.cs       # Server entry point
-│       ├── ModMetadata.cs               # SPT mod registration
-│       ├── RaidEndInterceptor.cs        # Raid end interception
-│       ├── CustomInRaidHelper.cs        # Inventory deletion override
-│       └── SnapshotRestorationState.cs  # Thread-safe state
-│
-├── bin/                                 # Build output
-├── README.md                            # This file
-├── CHANGELOG.md                         # Version history
-└── LICENSE                              # MIT License
 ```
 
 ---

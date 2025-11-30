@@ -7,9 +7,10 @@
 //
 // CONFIGURATION CATEGORIES:
 // 1. General - Master enable/disable switch
-// 2. Keybind - Customizable hotkey for taking snapshots
-// 3. Inventory Slots - Choose which equipment slots to include in snapshots
-// 4. Logging - Debug and diagnostic logging options
+// 2. Snapshot Behavior - Auto/manual snapshot modes and options
+// 3. Keybind - Customizable hotkey for taking manual snapshots
+// 4. Inventory Slots - Choose which equipment slots to include in snapshots
+// 5. Logging - Debug and diagnostic logging options
 //
 // USAGE:
 // All settings are automatically saved to:
@@ -24,8 +25,59 @@
 
 using BepInEx.Configuration;
 using System.Collections.Generic;
+using UnityEngine;
 
 namespace Blackhorse311.KeepStartingGear.Configuration;
+
+/// <summary>
+/// Predefined configuration presets for different playstyles.
+/// </summary>
+public enum ConfigPreset
+{
+    /// <summary>
+    /// Custom settings - user has modified settings manually.
+    /// The preset switches to this automatically when settings are changed.
+    /// </summary>
+    Custom,
+
+    /// <summary>
+    /// Casual preset - maximum protection, minimal hassle.
+    /// Auto-snapshot at raid start, all slots protected, sound enabled.
+    /// Best for players who just want their gear back on death.
+    /// </summary>
+    Casual,
+
+    /// <summary>
+    /// Hardcore preset - more risk, more control.
+    /// Manual-only snapshots, FIR items excluded, insured items excluded.
+    /// Best for players who want strategic gear protection with consequences.
+    /// </summary>
+    Hardcore
+}
+
+/// <summary>
+/// Defines the snapshot behavior mode for the mod.
+/// </summary>
+public enum SnapshotMode
+{
+    /// <summary>
+    /// Automatic snapshot at raid start only. No manual snapshots allowed.
+    /// This is the default, simplest mode - your starting gear is always protected.
+    /// </summary>
+    AutoOnly,
+
+    /// <summary>
+    /// Automatic snapshot at raid start, plus one manual snapshot allowed per raid.
+    /// Use this if you want to update your snapshot after finding good loot.
+    /// </summary>
+    AutoPlusManual,
+
+    /// <summary>
+    /// Manual snapshots only via keybind. No automatic snapshot at raid start.
+    /// Classic mode for players who want full control over when to snapshot.
+    /// </summary>
+    ManualOnly
+}
 
 /// <summary>
 /// Static class that manages all mod configuration settings.
@@ -51,10 +103,34 @@ public static class Settings
     // Numbered prefixes ensure consistent ordering.
     // ========================================================================
 
+    private const string CategoryPresets = "0. Quick Setup";
     private const string CategoryGeneral = "1. General";
-    private const string CategoryKeybind = "2. Keybind";
-    private const string CategoryInventory = "3. Inventory Slots";
-    private const string CategoryLogging = "4. Logging";
+    private const string CategorySnapshot = "2. Snapshot Behavior";
+    private const string CategoryKeybind = "3. Keybind";
+    private const string CategoryInventory = "4. Inventory Slots";
+    private const string CategoryLogging = "5. Logging";
+
+    // ========================================================================
+    // Preset Settings
+    // Quick setup presets for different playstyles
+    // ========================================================================
+
+    #region Preset Settings
+
+    /// <summary>
+    /// Configuration preset for quick setup.
+    /// Casual: Auto-snapshot, all protections off (default behavior)
+    /// Hardcore: Manual-only, FIR/insured items excluded
+    /// Custom: User has modified settings manually
+    /// </summary>
+    public static ConfigEntry<ConfigPreset> ActivePreset { get; private set; }
+
+    /// <summary>
+    /// Flag to prevent recursive preset application when settings change.
+    /// </summary>
+    private static bool _applyingPreset;
+
+    #endregion
 
     // ========================================================================
     // General Settings
@@ -76,39 +152,78 @@ public static class Settings
     #endregion
 
     // ========================================================================
+    // Snapshot Behavior Settings
+    // Control how and when snapshots are taken
+    // ========================================================================
+
+    #region Snapshot Behavior Settings
+
+    /// <summary>
+    /// Controls when snapshots are taken.
+    /// AutoOnly: Automatic at raid start, no manual allowed (default)
+    /// AutoPlusManual: Automatic at start + one manual snapshot allowed
+    /// ManualOnly: Only manual snapshots via keybind (classic mode)
+    /// </summary>
+    public static ConfigEntry<SnapshotMode> SnapshotModeOption { get; private set; }
+
+    /// <summary>
+    /// When true, items marked as Found-in-Raid will NOT be included in snapshots.
+    /// This prevents exploiting the mod to duplicate FIR items.
+    /// Default: false (include all items)
+    /// </summary>
+    public static ConfigEntry<bool> ProtectFIRItems { get; private set; }
+
+    /// <summary>
+    /// Cooldown in seconds between manual snapshots.
+    /// Only applies when SnapshotMode allows manual snapshots.
+    /// Set to 0 for no cooldown (only limited by one-per-raid in AutoPlusManual mode).
+    /// Default: 0
+    /// </summary>
+    public static ConfigEntry<int> ManualSnapshotCooldown { get; private set; }
+
+    /// <summary>
+    /// When true, shows a warning when manual snapshot would replace auto-snapshot.
+    /// Only applies in AutoPlusManual mode.
+    /// Default: true
+    /// </summary>
+    public static ConfigEntry<bool> WarnOnSnapshotOverwrite { get; private set; }
+
+    /// <summary>
+    /// Controls whether to take a new snapshot when transferring between maps.
+    /// When true, a new snapshot is taken on each map entry.
+    /// When false, the original snapshot from raid start is kept.
+    /// Default: false (keep original)
+    /// </summary>
+    public static ConfigEntry<bool> SnapshotOnMapTransfer { get; private set; }
+
+    /// <summary>
+    /// When true, plays a camera shutter sound when a snapshot is taken.
+    /// Default: true
+    /// </summary>
+    public static ConfigEntry<bool> PlaySnapshotSound { get; private set; }
+
+    /// <summary>
+    /// When true, items that are insured will NOT be included in snapshots.
+    /// This lets insurance handle those items normally.
+    /// Default: false (include all items)
+    /// </summary>
+    public static ConfigEntry<bool> ExcludeInsuredItems { get; private set; }
+
+    #endregion
+
+    // ========================================================================
     // Keybind Settings
-    // Configurable hotkey for taking inventory snapshots
+    // Configurable hotkey for taking manual inventory snapshots
     // ========================================================================
 
     #region Keybind Settings
 
     /// <summary>
-    /// Primary key for the snapshot keybind.
-    /// Default: F8
+    /// The keyboard shortcut for manual snapshots.
+    /// Default: Ctrl+Alt+F8
+    /// Displayed as a single combined keybind in the config manager.
     /// </summary>
-    /// <remarks>
-    /// Can be combined with modifier keys (Ctrl, Alt, Shift) to create
-    /// complex keybinds like Ctrl+Alt+F8.
-    /// </remarks>
-    public static ConfigEntry<UnityEngine.KeyCode> SnapshotKey { get; private set; }
-
-    /// <summary>
-    /// When true, Ctrl key must be held when pressing the snapshot key.
-    /// Default: true
-    /// </summary>
-    public static ConfigEntry<bool> RequireCtrl { get; private set; }
-
-    /// <summary>
-    /// When true, Alt key must be held when pressing the snapshot key.
-    /// Default: true
-    /// </summary>
-    public static ConfigEntry<bool> RequireAlt { get; private set; }
-
-    /// <summary>
-    /// When true, Shift key must be held when pressing the snapshot key.
-    /// Default: false
-    /// </summary>
-    public static ConfigEntry<bool> RequireShift { get; private set; }
+    public static ConfigEntry<KeyboardShortcut> SnapshotKeybind { get; private set; }
 
     #endregion
 
@@ -220,6 +335,14 @@ public static class Settings
     /// </summary>
     public static ConfigEntry<bool> LogSnapshotRestoration { get; private set; }
 
+    /// <summary>
+    /// Enable extremely verbose capture logging.
+    /// Logs every item, slot, grid, and container during capture.
+    /// WARNING: Creates a LOT of log output - only use for debugging.
+    /// Default: false
+    /// </summary>
+    public static ConfigEntry<bool> VerboseCaptureLogging { get; private set; }
+
     #endregion
 
     // ========================================================================
@@ -243,15 +366,127 @@ public static class Settings
         int order = 1000;
 
         // ====================================================================
+        // Preset Settings (Quick Setup)
+        // ====================================================================
+
+        ActivePreset = config.Bind(
+            CategoryPresets,
+            "Configuration Preset",
+            ConfigPreset.Casual,
+            new ConfigDescription(
+                "Quick setup presets for different playstyles:\n" +
+                "• Casual: Auto-snapshot, all items protected, sound enabled (recommended)\n" +
+                "• Hardcore: Manual snapshots only, FIR & insured items excluded\n" +
+                "• Custom: You've modified settings - preset won't auto-change",
+                null,
+                new ConfigurationManagerAttributes { Order = order-- }
+            )
+        );
+
+        // Hook up preset change event
+        ActivePreset.SettingChanged += OnPresetChanged;
+
+        // ====================================================================
         // General Settings
         // ====================================================================
 
         ModEnabled = config.Bind(
             CategoryGeneral,
-            "Enabled",
+            "Enable KSG Mod",
             true,
             new ConfigDescription(
-                "Enable or disable the entire mod",
+                "Master switch to enable or disable the Keep Starting Gear mod.\n" +
+                "When disabled, no snapshots will be taken or restored.",
+                null,
+                new ConfigurationManagerAttributes { Order = order-- }
+            )
+        );
+
+        // ====================================================================
+        // Snapshot Behavior Settings
+        // ====================================================================
+
+        order = 950; // Reset order for new category
+        SnapshotModeOption = config.Bind(
+            CategorySnapshot,
+            "Snapshot Mode",
+            SnapshotMode.AutoOnly,
+            new ConfigDescription(
+                "Controls when snapshots are taken:\n" +
+                "• Auto Only (default): Automatic snapshot at raid start, no manual allowed\n" +
+                "• Auto + Manual: Automatic at start, plus one manual snapshot per raid\n" +
+                "• Manual Only: Only manual snapshots via keybind (classic mode)",
+                null,
+                new ConfigurationManagerAttributes { Order = order-- }
+            )
+        );
+
+        ProtectFIRItems = config.Bind(
+            CategorySnapshot,
+            "Protect Found-in-Raid Items",
+            false,
+            new ConfigDescription(
+                "When enabled, items marked as Found-in-Raid will NOT be included in snapshots.\n" +
+                "This prevents exploiting the mod to duplicate FIR items.",
+                null,
+                new ConfigurationManagerAttributes { Order = order-- }
+            )
+        );
+
+        ManualSnapshotCooldown = config.Bind(
+            CategorySnapshot,
+            "Manual Snapshot Cooldown (seconds)",
+            0,
+            new ConfigDescription(
+                "Cooldown in seconds between manual snapshots.\n" +
+                "Set to 0 for no cooldown. Only applies when manual snapshots are enabled.",
+                new AcceptableValueRange<int>(0, 600),
+                new ConfigurationManagerAttributes { Order = order-- }
+            )
+        );
+
+        WarnOnSnapshotOverwrite = config.Bind(
+            CategorySnapshot,
+            "Warn on Snapshot Overwrite",
+            true,
+            new ConfigDescription(
+                "Show a warning notification when manual snapshot replaces auto-snapshot.\n" +
+                "Only applies in Auto + Manual mode.",
+                null,
+                new ConfigurationManagerAttributes { Order = order-- }
+            )
+        );
+
+        SnapshotOnMapTransfer = config.Bind(
+            CategorySnapshot,
+            "Re-Snapshot on Map Transfer",
+            false,
+            new ConfigDescription(
+                "When enabled, takes a new snapshot when transferring between maps.\n" +
+                "When disabled, keeps the original snapshot from raid start.",
+                null,
+                new ConfigurationManagerAttributes { Order = order-- }
+            )
+        );
+
+        PlaySnapshotSound = config.Bind(
+            CategorySnapshot,
+            "Play Snapshot Sound",
+            true,
+            new ConfigDescription(
+                "Play a camera shutter sound when a snapshot is taken.",
+                null,
+                new ConfigurationManagerAttributes { Order = order-- }
+            )
+        );
+
+        ExcludeInsuredItems = config.Bind(
+            CategorySnapshot,
+            "Exclude Insured Items",
+            false,
+            new ConfigDescription(
+                "When enabled, insured items will NOT be included in snapshots.\n" +
+                "This lets insurance handle those items normally instead of restoring them.",
                 null,
                 new ConfigurationManagerAttributes { Order = order-- }
             )
@@ -259,48 +494,16 @@ public static class Settings
 
         // ====================================================================
         // Keybind Settings
-        // Default keybind is Ctrl+Alt+F8 (all three keys must be pressed)
+        // Single combined keybind displayed as "Ctrl + Alt + F8"
+        // Only used when manual snapshots are enabled
         // ====================================================================
 
-        SnapshotKey = config.Bind(
+        SnapshotKeybind = config.Bind(
             CategoryKeybind,
-            "Snapshot Key",
-            UnityEngine.KeyCode.F8,
+            "Manual Snapshot Keybind",
+            new KeyboardShortcut(KeyCode.F8, KeyCode.LeftControl, KeyCode.LeftAlt),
             new ConfigDescription(
-                "Primary key to take inventory snapshot",
-                null,
-                new ConfigurationManagerAttributes { Order = order-- }
-            )
-        );
-
-        RequireCtrl = config.Bind(
-            CategoryKeybind,
-            "Require Ctrl",
-            true,
-            new ConfigDescription(
-                "Require Ctrl key to be held with snapshot key",
-                null,
-                new ConfigurationManagerAttributes { Order = order-- }
-            )
-        );
-
-        RequireAlt = config.Bind(
-            CategoryKeybind,
-            "Require Alt",
-            true,
-            new ConfigDescription(
-                "Require Alt key to be held with snapshot key",
-                null,
-                new ConfigurationManagerAttributes { Order = order-- }
-            )
-        );
-
-        RequireShift = config.Bind(
-            CategoryKeybind,
-            "Require Shift",
-            false,
-            new ConfigDescription(
-                "Require Shift key to be held with snapshot key",
+                "Keybind for taking manual snapshots (only used in Auto+Manual or Manual Only modes)",
                 null,
                 new ConfigurationManagerAttributes { Order = order-- }
             )
@@ -370,6 +573,17 @@ public static class Settings
             )
         );
 
+        VerboseCaptureLogging = config.Bind(
+            CategoryLogging,
+            "Verbose Capture Logging",
+            false,
+            new ConfigDescription(
+                "Enable extremely detailed logging during item capture (WARNING: lots of output)",
+                null,
+                new ConfigurationManagerAttributes { Order = order-- }
+            )
+        );
+
         Plugin.Log.LogInfo("Settings initialized with BepInEx ConfigFile");
     }
 
@@ -431,6 +645,124 @@ public static class Settings
             { "SpecialSlot2", SaveSpecialSlot2 },
             { "SpecialSlot3", SaveSpecialSlot3 }
         };
+    }
+
+    // ========================================================================
+    // Preset Methods
+    // ========================================================================
+
+    /// <summary>
+    /// Event handler for when the preset setting changes.
+    /// Applies the selected preset's settings.
+    /// </summary>
+    private static void OnPresetChanged(object sender, System.EventArgs e)
+    {
+        if (_applyingPreset) return;
+
+        var preset = ActivePreset.Value;
+        if (preset == ConfigPreset.Custom) return;
+
+        ApplyPreset(preset);
+        Plugin.Log.LogInfo($"Applied {preset} preset");
+    }
+
+    /// <summary>
+    /// Applies a configuration preset, setting all related options to preset values.
+    /// </summary>
+    /// <param name="preset">The preset to apply</param>
+    public static void ApplyPreset(ConfigPreset preset)
+    {
+        _applyingPreset = true;
+
+        try
+        {
+            switch (preset)
+            {
+                case ConfigPreset.Casual:
+                    ApplyCasualPreset();
+                    break;
+                case ConfigPreset.Hardcore:
+                    ApplyHardcorePreset();
+                    break;
+                case ConfigPreset.Custom:
+                    // Don't change anything for Custom
+                    break;
+            }
+        }
+        finally
+        {
+            _applyingPreset = false;
+        }
+    }
+
+    /// <summary>
+    /// Applies the Casual preset - maximum protection with minimal hassle.
+    /// Best for players who just want their gear back on death.
+    /// </summary>
+    private static void ApplyCasualPreset()
+    {
+        // Snapshot behavior: auto-snapshot at raid start
+        SnapshotModeOption.Value = SnapshotMode.AutoOnly;
+        ProtectFIRItems.Value = false;         // Save everything including FIR
+        ExcludeInsuredItems.Value = false;     // Save insured items too
+        SnapshotOnMapTransfer.Value = false;   // Keep original snapshot
+        PlaySnapshotSound.Value = true;        // Sound enabled
+        WarnOnSnapshotOverwrite.Value = true;  // Show warnings
+
+        // All inventory slots enabled
+        SaveFirstPrimaryWeapon.Value = true;
+        SaveSecondPrimaryWeapon.Value = true;
+        SaveHolster.Value = true;
+        SaveScabbard.Value = true;
+        SaveHeadwear.Value = true;
+        SaveEarpiece.Value = true;
+        SaveFaceCover.Value = true;
+        SaveEyewear.Value = true;
+        SaveArmBand.Value = true;
+        SaveTacticalVest.Value = true;
+        SaveArmorVest.Value = true;
+        SavePockets.Value = true;
+        SaveBackpack.Value = true;
+        SaveSecuredContainer.Value = true;
+        SaveCompass.Value = true;
+        SaveSpecialSlot1.Value = true;
+        SaveSpecialSlot2.Value = true;
+        SaveSpecialSlot3.Value = true;
+    }
+
+    /// <summary>
+    /// Applies the Hardcore preset - more risk, more control.
+    /// Best for players who want strategic gear protection with consequences.
+    /// </summary>
+    private static void ApplyHardcorePreset()
+    {
+        // Snapshot behavior: manual only, must actively choose to save
+        SnapshotModeOption.Value = SnapshotMode.ManualOnly;
+        ProtectFIRItems.Value = true;          // Don't save FIR items (prevents exploitation)
+        ExcludeInsuredItems.Value = true;      // Let insurance handle insured items
+        SnapshotOnMapTransfer.Value = false;   // Keep original snapshot
+        PlaySnapshotSound.Value = true;        // Sound enabled
+        WarnOnSnapshotOverwrite.Value = true;  // Show warnings
+
+        // All inventory slots still enabled (user controls via keybind timing)
+        SaveFirstPrimaryWeapon.Value = true;
+        SaveSecondPrimaryWeapon.Value = true;
+        SaveHolster.Value = true;
+        SaveScabbard.Value = true;
+        SaveHeadwear.Value = true;
+        SaveEarpiece.Value = true;
+        SaveFaceCover.Value = true;
+        SaveEyewear.Value = true;
+        SaveArmBand.Value = true;
+        SaveTacticalVest.Value = true;
+        SaveArmorVest.Value = true;
+        SavePockets.Value = true;
+        SaveBackpack.Value = true;
+        SaveSecuredContainer.Value = true;
+        SaveCompass.Value = true;
+        SaveSpecialSlot1.Value = true;
+        SaveSpecialSlot2.Value = true;
+        SaveSpecialSlot3.Value = true;
     }
 }
 

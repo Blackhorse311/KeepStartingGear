@@ -4,30 +4,34 @@
 // This patch detects when the player returns to the stash/hideout after a raid
 // and triggers inventory restoration from the snapshot if the player died.
 //
-// NOTE: This is a LEGACY/FALLBACK approach. The preferred method is server-side
-// restoration via RaidEndInterceptor which modifies the profile during raid end
-// processing. This client-side patch is kept as a backup.
+// STATUS: DISABLED
+// This patch is disabled because it causes a "double bounce" issue where the
+// character screen flashes and reloads after restoration. The server-side
+// RaidEndInterceptor handles restoration more cleanly without this issue.
+//
+// The RecreateCurrentBackend() call that was needed for this approach disrupts
+// the normal menu flow after a raid ends.
+//
+// KEEPING FOR REFERENCE:
+// This code is preserved for reference in case server-side restoration ever
+// needs a fallback, but it should remain disabled under normal operation.
 //
 // HOOK POINT:
 // GridSortPanel.Show() - Called when the inventory panel opens.
 // By checking the caller (SimpleStashPanel), we can detect post-raid return.
 //
-// RESTORATION FLOW:
+// ORIGINAL RESTORATION FLOW:
 // 1. Player dies in raid
 // 2. SPT processes raid end and saves profile (with empty inventory)
 // 3. Player returns to hideout, stash panel opens
 // 4. This patch detects the stash open via stack trace inspection
 // 5. Looks for a snapshot to restore
 // 6. Directly edits the profile JSON file to add snapshot items
-// 7. Triggers backend reload to update the UI
-//
-// WHY THIS APPROACH?
-// - Works WITH the system, not against it
-// - Profile has already been saved, so we can safely modify it
-// - Backend reload ensures UI shows the restored items
+// 7. Triggers backend reload to update the UI <- CAUSES BOUNCE ISSUE
 //
 // AUTHOR: Blackhorse311
 // LICENSE: MIT
+// BUG REPORT CREDIT: @Troyoza on Forge identified the character screen bounce
 // ============================================================================
 
 using System;
@@ -60,10 +64,12 @@ namespace Blackhorse311.KeepStartingGear.Patches;
 ///   <item>This approach works WITH the system, not against it</item>
 /// </list>
 /// <para>
-/// <b>Important:</b> This is a fallback approach. The server-side component
+/// <b>Important:</b> This patch is DISABLED. The server-side component
 /// (RaidEndInterceptor) handles restoration more reliably during raid end processing.
+/// The RecreateCurrentBackend() call in this patch caused a UI bounce issue.
 /// </para>
 /// </remarks>
+[DisablePatch]  // DISABLED: Causes character screen bounce - server-side handles restoration
 public class PostRaidInventoryPatch : ModulePatch
 {
     // ========================================================================
@@ -223,9 +229,11 @@ public class PostRaidInventoryPatch : ModulePatch
                 SnapshotManager.Instance.ClearSnapshot(mostRecentSnapshot.SessionId);
 
                 // Show notification to user
-                NotificationManagerClass.DisplayMessageNotification(
-                    "[Keep Starting Gear] Inventory restored! Reloading profile...",
-                    ENotificationDurationType.Default);
+                // NOTE: NotificationManagerClass commented out - class may have been renamed in SPT 4.0.7
+                // This patch is disabled anyway ([DisablePatch] attribute)
+                // NotificationManagerClass.DisplayMessageNotification(
+                //     "[Keep Starting Gear] Inventory restored! Reloading profile...",
+                //     ENotificationDurationType.Default);
 
                 // Trigger a profile reload from the server so the UI updates
                 // Without this, the game shows stale data
@@ -234,9 +242,9 @@ public class PostRaidInventoryPatch : ModulePatch
             else
             {
                 Plugin.Log.LogError("Failed to restore inventory to profile");
-                NotificationManagerClass.DisplayWarningNotification(
-                    "[Keep Starting Gear] Failed to restore inventory! Check logs.",
-                    ENotificationDurationType.Long);
+                // NotificationManagerClass.DisplayWarningNotification(
+                //     "[Keep Starting Gear] Failed to restore inventory! Check logs.",
+                //     ENotificationDurationType.Long);
             }
         }
         catch (Exception ex)
@@ -296,26 +304,26 @@ public class PostRaidInventoryPatch : ModulePatch
 
                 Plugin.Log.LogInfo("Backend reload completed - inventory should now be visible!");
 
-                NotificationManagerClass.DisplayMessageNotification(
-                    "[Keep Starting Gear] Inventory restored successfully!",
-                    ENotificationDurationType.Default);
+                // NotificationManagerClass.DisplayMessageNotification(
+                //     "[Keep Starting Gear] Inventory restored successfully!",
+                //     ENotificationDurationType.Default);
             }
             else
             {
                 // Fallback: can't auto-reload, user needs to restart
                 Plugin.Log.LogWarning("Could not find TarkovApplication - manual reload required");
-                NotificationManagerClass.DisplayWarningNotification(
-                    "[Keep Starting Gear] Please restart game to see restored items",
-                    ENotificationDurationType.Long);
+                // NotificationManagerClass.DisplayWarningNotification(
+                //     "[Keep Starting Gear] Please restart game to see restored items",
+                //     ENotificationDurationType.Long);
             }
         }
         catch (Exception ex)
         {
             Plugin.Log.LogError($"Failed to reload profile: {ex.Message}");
             Plugin.Log.LogError($"Stack trace: {ex.StackTrace}");
-            NotificationManagerClass.DisplayWarningNotification(
-                "[Keep Starting Gear] Reload failed - please restart game",
-                ENotificationDurationType.Long);
+            // NotificationManagerClass.DisplayWarningNotification(
+            //     "[Keep Starting Gear] Reload failed - please restart game",
+            //     ENotificationDurationType.Long);
         }
     }
 }

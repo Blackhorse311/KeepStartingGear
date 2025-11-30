@@ -120,7 +120,7 @@ public class GameStartPatch : ModulePatch
                 monitor.Init(player, __instance);
 
                 Plugin.Log.LogInfo("KeybindMonitor attached to player");
-                Plugin.Log.LogInfo($"Snapshot keybind: {Configuration.Settings.SnapshotKey.Value}");
+                Plugin.Log.LogInfo($"Snapshot keybind: {Configuration.Settings.SnapshotKeybind.Value}");
             }
             else
             {

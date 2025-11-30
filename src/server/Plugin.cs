@@ -78,12 +78,12 @@ public class Plugin : BaseUnityPlugin
     /// <summary>
     /// Human-readable name displayed in BepInEx plugin list
     /// </summary>
-    public const string PluginName = "Keep Starting Gear";
+    public const string PluginName = "Blackhorse311-KeepStartingGear";
 
     /// <summary>
     /// Semantic version (MAJOR.MINOR.PATCH) - must match server mod version
     /// </summary>
-    public const string PluginVersion = "1.0.0";
+    public const string PluginVersion = "1.1.0";
 
     /// <summary>
     /// SPT/EFT build version this mod was tested against

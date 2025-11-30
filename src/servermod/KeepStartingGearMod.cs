@@ -65,12 +65,48 @@ public class KeepStartingGearMod(ISptLogger<KeepStartingGearMod> logger) : IOnLo
     /// CustomInRaidHelper. This OnLoad method just provides user feedback
     /// that the server component loaded successfully.
     /// </remarks>
+    /// <summary>
+    /// Mod folder name - must match the folder name used in both server and client mod installations.
+    /// </summary>
+    private const string ModFolderName = "Blackhorse311-KeepStartingGear";
+
     public Task OnLoad()
     {
         logger.Info("[KeepStartingGear-Server] Server component loaded successfully!");
         logger.Info("[KeepStartingGear-Server] Inventory restoration service ready.");
-        logger.Info("[KeepStartingGear-Server] Snapshots location: H:\\SPT\\BepInEx\\plugins\\Blackhorse311-KeepStartingGear\\snapshots\\");
+
+        // Log the dynamically resolved snapshots path
+        string snapshotsPath = ResolveSnapshotsPath();
+        logger.Info($"[KeepStartingGear-Server] Snapshots location: {snapshotsPath}");
 
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Resolves the snapshots path dynamically based on the server mod's DLL location.
+    /// </summary>
+    /// <returns>Full path to the snapshots directory</returns>
+    private static string ResolveSnapshotsPath()
+    {
+        try
+        {
+            // Get the directory where this DLL is located
+            // e.g., {SPT_ROOT}/SPT/user/mods/Blackhorse311-KeepStartingGear/
+            string dllPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
+            string modDirectory = System.IO.Path.GetDirectoryName(dllPath);
+
+            // Navigate up to SPT root:
+            // From: {SPT_ROOT}\SPT\user\mods\{ModFolder}\
+            // Up 4 levels to: {SPT_ROOT}\
+            string sptRoot = System.IO.Path.GetFullPath(System.IO.Path.Combine(modDirectory, "..", "..", "..", ".."));
+
+            // Construct the BepInEx snapshots path
+            // {SPT_ROOT}\BepInEx\plugins\{ModFolder}\snapshots\
+            return System.IO.Path.Combine(sptRoot, "BepInEx", "plugins", ModFolderName, "snapshots");
+        }
+        catch (Exception ex)
+        {
+            return $"<path resolution failed: {ex.Message}>";
+        }
     }
 }

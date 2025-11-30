@@ -36,3 +36,13 @@ CONTEXT_FOR_*.md
 TESTING_*.md
 .*settings*/
 
+# Claude Code
+.claude/
+
+# Release packages (distributed separately)
+release/
+*.zip
+
+# Temp files
+nul
+

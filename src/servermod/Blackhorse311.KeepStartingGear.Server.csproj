@@ -5,7 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <OutputType>Library</OutputType>
-    <Version>1.0.0</Version>
+    <Version>1.1.0</Version>
     <Authors>Blackhorse311</Authors>
     <Description>Server-side component for Keep Starting Gear mod - handles inventory restoration on raid end</Description>
   </PropertyGroup>

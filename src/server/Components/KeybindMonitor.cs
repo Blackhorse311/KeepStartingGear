@@ -1,24 +1,24 @@
 // ============================================================================
 // Keep Starting Gear - Keybind Monitor Component
 // ============================================================================
-// This Unity MonoBehaviour component monitors for the snapshot keybind and
-// triggers inventory snapshot creation when pressed.
+// This Unity MonoBehaviour component handles snapshot capture - both automatic
+// at raid start and manual via keybind.
 //
 // KEY RESPONSIBILITIES:
-// 1. Monitor keyboard input each frame for the configured keybind
-// 2. Enforce the one-snapshot-per-map limit during raids
-// 3. Trigger inventory capture through InventoryService
-// 4. Display appropriate notifications via NotificationOverlay
+// 1. Take automatic snapshot at raid start (if enabled)
+// 2. Monitor keyboard input for manual snapshot keybind
+// 3. Enforce snapshot limits based on mode settings
+// 4. Trigger inventory capture through InventoryService
+// 5. Display appropriate notifications via NotificationOverlay
+//
+// SNAPSHOT MODES:
+// - AutoOnly: Automatic snapshot at raid start, no manual allowed (default)
+// - AutoPlusManual: Automatic at start + one manual snapshot per raid
+// - ManualOnly: Only manual snapshots via keybind (classic mode)
 //
 // KEYBIND SYSTEM:
 // The default keybind is Ctrl+Alt+F8, but this is fully configurable through
-// the BepInEx Configuration Manager. Users can change the primary key and
-// enable/disable modifier requirements (Ctrl, Alt, Shift).
-//
-// SNAPSHOT LIMIT SYSTEM:
-// - In hideout: Unlimited snapshots allowed
-// - In raid: One snapshot per map per raid
-// - Limit resets when: Changing maps, starting new raid, or extracting
+// the BepInEx Configuration Manager. Only used when manual snapshots are enabled.
 //
 // This component is attached to a GameObject when a raid starts (via GameStartPatch)
 // and is destroyed when the raid ends.
@@ -28,6 +28,7 @@
 // ============================================================================
 
 using System;
+using BepInEx.Configuration;
 using Blackhorse311.KeepStartingGear.Configuration;
 using Blackhorse311.KeepStartingGear.Services;
 using EFT;
@@ -85,7 +86,7 @@ public class KeybindMonitor : MonoBehaviour
 
     // ========================================================================
     // Static Fields (Shared Across All Instances)
-    // These track raid-wide state for the snapshot limit system
+    // These track raid-wide state for the snapshot system
     // ========================================================================
 
     /// <summary>
@@ -93,17 +94,42 @@ public class KeybindMonitor : MonoBehaviour
     /// When a snapshot is taken on a map, this is set to that map's name.
     /// Null means no snapshot has been taken yet this raid.
     /// </summary>
-    /// <remarks>
-    /// This is static because the snapshot limit persists across map transfers
-    /// within the same raid, but resets when the raid ends.
-    /// </remarks>
     private static string _currentRaidSnapshotMap = null;
 
     /// <summary>
     /// Tracks whether the player is currently in a raid.
-    /// Used in conjunction with _currentRaidSnapshotMap to enforce limits.
     /// </summary>
     private static bool _inRaid = false;
+
+    /// <summary>
+    /// Tracks whether an auto-snapshot was taken at raid start.
+    /// Used for warning when manual snapshot would overwrite auto-snapshot.
+    /// </summary>
+    private static bool _autoSnapshotTaken = false;
+
+    /// <summary>
+    /// Tracks whether a manual snapshot has been taken this raid.
+    /// In AutoPlusManual mode, only one manual snapshot is allowed per raid.
+    /// </summary>
+    private static bool _manualSnapshotTaken = false;
+
+    /// <summary>
+    /// Timestamp when the last manual snapshot was taken.
+    /// Used for enforcing configurable cooldown between manual snapshots.
+    /// </summary>
+    private static float _lastManualSnapshotTime = 0f;
+
+    /// <summary>
+    /// Number of items in the current snapshot.
+    /// Used for showing difference when overwriting auto-snapshot.
+    /// </summary>
+    private static int _currentSnapshotItemCount = 0;
+
+    /// <summary>
+    /// The snapshot mode that was active when the raid started.
+    /// This prevents exploits where players change settings mid-raid.
+    /// </summary>
+    private static SnapshotMode _raidStartMode = SnapshotMode.AutoOnly;
 
     // ========================================================================
     // Initialization
@@ -116,8 +142,7 @@ public class KeybindMonitor : MonoBehaviour
     /// <param name="player">The player instance to monitor</param>
     /// <param name="gameWorld">The current GameWorld instance</param>
     /// <remarks>
-    /// This method also resets the snapshot tracking state, allowing a fresh
-    /// snapshot to be taken at the start of each raid.
+    /// This method also handles auto-snapshot at raid start if enabled.
     /// </remarks>
     public void Init(Player player, GameWorld gameWorld)
     {
@@ -127,12 +152,148 @@ public class KeybindMonitor : MonoBehaviour
         // Initialize cooldown timer to allow immediate snapshot
         _lastSnapshotTime = -SnapshotCooldown;
 
-        // Mark that we're in a raid and reset the snapshot tracking
-        // This allows a new snapshot to be taken at the start of each raid
+        // Mark that we're in a raid and reset all snapshot tracking
         _inRaid = true;
         _currentRaidSnapshotMap = null;
+        _autoSnapshotTaken = false;
+        _manualSnapshotTaken = false;
+        _lastManualSnapshotTime = 0f;
+        _currentSnapshotItemCount = 0;
 
         Plugin.Log.LogInfo($"KeybindMonitor initialized for {player.Profile.Nickname}");
+
+        // Check if this is a map transfer (we already have a snapshot from this raid)
+        bool isMapTransfer = _autoSnapshotTaken;
+
+        if (isMapTransfer)
+        {
+            Plugin.Log.LogInfo("Map transfer detected - checking snapshot settings...");
+
+            if (Settings.SnapshotOnMapTransfer.Value)
+            {
+                Plugin.Log.LogInfo("Re-Snapshot on Map Transfer is enabled - taking new snapshot");
+                // Reset tracking for new snapshot
+                _manualSnapshotTaken = false;
+                Invoke(nameof(TakeAutoSnapshot), 0.5f);
+            }
+            else
+            {
+                Plugin.Log.LogInfo($"Keeping original snapshot ({_currentSnapshotItemCount} items) - no re-snapshot on transfer");
+                NotificationOverlay.ShowInfo($"Gear Still Protected\n{_currentSnapshotItemCount} items from original snapshot");
+            }
+            return; // Skip the rest of initialization for transfers
+        }
+
+        // First raid entry - capture the snapshot mode (prevents mid-raid setting changes)
+        _raidStartMode = Settings.SnapshotModeOption.Value;
+        Plugin.Log.LogInfo($"Snapshot mode locked for this raid: {_raidStartMode}");
+
+        // Handle auto-snapshot at raid start
+        if (_raidStartMode == SnapshotMode.AutoOnly || _raidStartMode == SnapshotMode.AutoPlusManual)
+        {
+            // Delay auto-snapshot slightly to ensure player is fully loaded
+            Invoke(nameof(TakeAutoSnapshot), 0.5f);
+        }
+        else
+        {
+            // Manual only mode - show keybind reminder
+            string keybind = GetKeybindString();
+            Plugin.Log.LogInfo($"Manual snapshot mode - press {keybind} to take snapshot");
+            NotificationOverlay.ShowInfo($"Manual Snapshot Mode\nPress {keybind} to save gear");
+        }
+
+        Plugin.Log.LogInfo($"Keybind configured: {GetKeybindString()}");
+    }
+
+    /// <summary>
+    /// Takes an automatic snapshot at raid start.
+    /// Called via Invoke() after a short delay to ensure player is ready.
+    /// </summary>
+    private void TakeAutoSnapshot()
+    {
+        try
+        {
+            if (_player == null || _gameWorld == null)
+            {
+                Plugin.Log.LogWarning("Cannot take auto-snapshot: player or gameworld is null");
+                return;
+            }
+
+            string location = GetCurrentLocation();
+            Plugin.Log.LogInfo($"Taking automatic snapshot at raid start on {location}...");
+
+            // Capture inventory
+            var snapshot = InventoryService.Instance.CaptureInventory(_player, location, true);
+
+            if (snapshot != null && snapshot.IsValid())
+            {
+                bool saved = SnapshotManager.Instance.SaveSnapshot(snapshot);
+
+                if (saved)
+                {
+                    _autoSnapshotTaken = true;
+                    _currentRaidSnapshotMap = location;
+                    _currentSnapshotItemCount = snapshot.Items.Count;
+
+                    // Play camera shutter sound
+                    SnapshotSoundPlayer.PlaySnapshotSound();
+
+                    Plugin.Log.LogInfo($"Auto-snapshot saved: {snapshot.Items.Count} items");
+
+                    // Show notification based on mode
+                    if (_raidStartMode == SnapshotMode.AutoPlusManual)
+                    {
+                        string keybind = GetKeybindString();
+                        NotificationOverlay.ShowSuccess($"Gear Protected!\n{snapshot.Items.Count} items saved\nPress {keybind} to update");
+                    }
+                    else
+                    {
+                        NotificationOverlay.ShowSuccess($"Gear Protected!\n{snapshot.Items.Count} items saved automatically");
+                    }
+                }
+                else
+                {
+                    Plugin.Log.LogError("Failed to save auto-snapshot");
+                    NotificationOverlay.ShowError("Auto-Snapshot Failed!\nCheck logs for details");
+                }
+            }
+            else
+            {
+                Plugin.Log.LogError("Failed to capture auto-snapshot");
+                NotificationOverlay.ShowError("Auto-Snapshot Failed!\nCould not capture inventory");
+            }
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.LogError($"Error in auto-snapshot: {ex.Message}");
+            Plugin.Log.LogError($"Stack trace: {ex.StackTrace}");
+        }
+    }
+
+    /// <summary>
+    /// Gets a human-readable string for the current keybind configuration.
+    /// Formats as "Ctrl + Alt + F8" (modifiers first, then main key).
+    /// </summary>
+    private string GetKeybindString()
+    {
+        var shortcut = Settings.SnapshotKeybind.Value;
+        var parts = new System.Collections.Generic.List<string>();
+
+        // Add modifiers first (in standard order: Ctrl, Alt, Shift)
+        foreach (var modifier in shortcut.Modifiers)
+        {
+            string modName = modifier.ToString();
+            // Clean up modifier names (LeftControl -> Ctrl, etc.)
+            if (modName.Contains("Control")) parts.Add("Ctrl");
+            else if (modName.Contains("Alt")) parts.Add("Alt");
+            else if (modName.Contains("Shift")) parts.Add("Shift");
+            else parts.Add(modName);
+        }
+
+        // Add main key last
+        parts.Add(shortcut.MainKey.ToString());
+
+        return string.Join(" + ", parts);
     }
 
     // ========================================================================
@@ -141,17 +302,17 @@ public class KeybindMonitor : MonoBehaviour
 
     /// <summary>
     /// Resets the snapshot tracking state when a raid ends.
-    /// Called by RaidEndPatch to clear the snapshot limit for the next raid.
+    /// Called by RaidEndPatch to clear the snapshot state for the next raid.
     /// </summary>
-    /// <remarks>
-    /// This must be called when the raid ends (death, extraction, or disconnect)
-    /// to ensure the snapshot limit doesn't persist incorrectly into the next raid.
-    /// </remarks>
     public static void ResetRaidState()
     {
         _inRaid = false;
         _currentRaidSnapshotMap = null;
-        Plugin.Log.LogDebug("Raid state reset - snapshot limit cleared");
+        _autoSnapshotTaken = false;
+        _manualSnapshotTaken = false;
+        _lastManualSnapshotTime = 0f;
+        _currentSnapshotItemCount = 0;
+        Plugin.Log.LogDebug("Raid state reset - all snapshot tracking cleared");
     }
 
     /// <summary>
@@ -220,43 +381,15 @@ public class KeybindMonitor : MonoBehaviour
     // ========================================================================
 
     /// <summary>
-    /// Checks if the complete snapshot keybind combination is currently pressed.
-    /// This includes the primary key and any required modifier keys.
+    /// Checks if the snapshot keybind was just pressed this frame.
+    /// Uses BepInEx's KeyboardShortcut which handles modifiers automatically.
     /// </summary>
-    /// <returns>True if all required keys are pressed simultaneously</returns>
-    /// <remarks>
-    /// The keybind is configurable through Settings:
-    /// - Primary key: Settings.SnapshotKey (default: F8)
-    /// - Ctrl required: Settings.RequireCtrl (default: true)
-    /// - Alt required: Settings.RequireAlt (default: true)
-    /// - Shift required: Settings.RequireShift (default: false)
-    ///
-    /// Default combination is Ctrl+Alt+F8
-    /// </remarks>
+    /// <returns>True if the keybind was just pressed</returns>
     private bool IsSnapshotKeybindPressed()
     {
-        // Check if the primary key was just pressed this frame
-        // GetKeyDown returns true only on the frame the key is pressed down
-        if (!Input.GetKeyDown(Settings.SnapshotKey.Value))
-            return false;
-
-        // Check Ctrl modifier if required
-        // Supports both left and right Ctrl keys
-        if (Settings.RequireCtrl.Value && !(Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)))
-            return false;
-
-        // Check Alt modifier if required
-        // Supports both left and right Alt keys
-        if (Settings.RequireAlt.Value && !(Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt)))
-            return false;
-
-        // Check Shift modifier if required
-        // Supports both left and right Shift keys
-        if (Settings.RequireShift.Value && !(Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)))
-            return false;
-
-        // All required keys are pressed
-        return true;
+        // KeyboardShortcut.IsDown() returns true on the frame the key combination is pressed
+        // It automatically handles checking all modifier keys (Ctrl, Alt, Shift)
+        return Settings.SnapshotKeybind.Value.IsDown();
     }
 
     // ========================================================================
@@ -264,18 +397,9 @@ public class KeybindMonitor : MonoBehaviour
     // ========================================================================
 
     /// <summary>
-    /// Called when the snapshot keybind is pressed. Handles the complete snapshot workflow:
-    /// checking limits, capturing inventory, saving snapshot, and showing notifications.
+    /// Called when the snapshot keybind is pressed. Handles the complete snapshot workflow
+    /// based on the current snapshot mode settings.
     /// </summary>
-    /// <remarks>
-    /// Workflow:
-    /// 1. Update cooldown timer
-    /// 2. Determine if in raid and get current location
-    /// 3. Check snapshot limit (one per map in raid)
-    /// 4. Capture inventory via InventoryService
-    /// 5. Save snapshot via SnapshotManager
-    /// 6. Show appropriate notification (success/warning/error)
-    /// </remarks>
     private void OnSnapshotKeybindPressed()
     {
         try
@@ -283,79 +407,124 @@ public class KeybindMonitor : MonoBehaviour
             // Update cooldown timer to prevent rapid re-triggers
             _lastSnapshotTime = Time.time;
 
-            Plugin.Log.LogInfo("Snapshot keybind pressed - capturing inventory...");
+            // Use the mode that was locked at raid start (prevents mid-raid exploits)
+            var mode = _raidStartMode;
+
+            // ================================================================
+            // Mode Check: AutoOnly doesn't allow manual snapshots
+            // ================================================================
+            if (mode == SnapshotMode.AutoOnly)
+            {
+                Plugin.Log.LogInfo("Manual snapshot blocked - mode is Auto Only");
+                NotificationOverlay.ShowWarning("Manual Snapshots Disabled\nGear is auto-protected at raid start");
+                return;
+            }
+
+            Plugin.Log.LogInfo("Manual snapshot keybind pressed - capturing inventory...");
 
             // Determine if we're currently in a raid
-            // In raid: MainPlayer should be set and match our player reference
             bool inRaid = _gameWorld != null && _gameWorld.MainPlayer == _player;
-
-            // Get the current location/map name
-            // Used for logging and snapshot limit enforcement
             string location = inRaid ? GetCurrentLocation() : "Hideout";
 
             // ================================================================
-            // Snapshot Limit Check
-            // In-raid: Only one snapshot per map per raid
-            // Hideout: Unlimited snapshots allowed
+            // AutoPlusManual Mode: Check if manual snapshot already taken
             // ================================================================
-            if (inRaid && HasSnapshotForCurrentRaid(location))
+            if (mode == SnapshotMode.AutoPlusManual && inRaid && _manualSnapshotTaken)
             {
-                Plugin.Log.LogInfo($"Snapshot already taken for {location} this raid - limit reached");
-
-                // Show large centered yellow warning notification
-                NotificationOverlay.ShowWarning($"Snapshot Limit Reached!\nOne per map per raid");
+                Plugin.Log.LogInfo("Manual snapshot limit reached - one per raid in Auto+Manual mode");
+                NotificationOverlay.ShowWarning("Manual Snapshot Limit!\nOne update allowed per raid");
                 return;
             }
 
             // ================================================================
+            // Cooldown Check (configurable)
+            // ================================================================
+            int cooldownSeconds = Settings.ManualSnapshotCooldown.Value;
+            if (cooldownSeconds > 0 && inRaid)
+            {
+                float timeSinceLastManual = Time.time - _lastManualSnapshotTime;
+                if (timeSinceLastManual < cooldownSeconds)
+                {
+                    int remaining = (int)(cooldownSeconds - timeSinceLastManual);
+                    Plugin.Log.LogInfo($"Manual snapshot on cooldown - {remaining}s remaining");
+                    NotificationOverlay.ShowWarning($"Snapshot Cooldown\n{remaining} seconds remaining");
+                    return;
+                }
+            }
+
+            // ================================================================
+            // ManualOnly Mode: Check one-per-map limit (legacy behavior)
+            // ================================================================
+            if (mode == SnapshotMode.ManualOnly && inRaid && HasSnapshotForCurrentRaid(location))
+            {
+                Plugin.Log.LogInfo($"Snapshot already taken for {location} this raid");
+                NotificationOverlay.ShowWarning("Snapshot Limit Reached!\nOne per map per raid");
+                return;
+            }
+
+            // ================================================================
+            // Warning if overwriting auto-snapshot
+            // ================================================================
+            bool isOverwriting = _autoSnapshotTaken && Settings.WarnOnSnapshotOverwrite.Value;
+
+            // ================================================================
             // Capture Inventory
-            // Uses InventoryService to convert player's equipped items to
-            // a serializable snapshot format
             // ================================================================
             var snapshot = InventoryService.Instance.CaptureInventory(_player, location, inRaid);
 
             if (snapshot != null && snapshot.IsValid())
             {
-                // ============================================================
-                // Save Snapshot
-                // SnapshotManager handles JSON serialization and file I/O
-                // ============================================================
                 bool saved = SnapshotManager.Instance.SaveSnapshot(snapshot);
 
                 if (saved)
                 {
-                    Plugin.Log.LogInfo($"Inventory snapshot saved successfully!");
+                    // Play camera shutter sound
+                    SnapshotSoundPlayer.PlaySnapshotSound();
 
-                    // Mark that we've taken a snapshot for this map
-                    // Only applies when in-raid (hideout has no limit)
+                    Plugin.Log.LogInfo($"Manual snapshot saved: {snapshot.Items.Count} items");
+
+                    // Update tracking
                     if (inRaid)
                     {
                         _currentRaidSnapshotMap = location;
-                        Plugin.Log.LogInfo($"Snapshot limit set for map: {location}");
-                    }
+                        _manualSnapshotTaken = true;
+                        _lastManualSnapshotTime = Time.time;
 
-                    // Show large centered green success notification
-                    NotificationOverlay.ShowSuccess($"Snapshot Saved!\n{snapshot.Items.Count} items captured");
+                        // Calculate difference from auto-snapshot
+                        int diff = snapshot.Items.Count - _currentSnapshotItemCount;
+                        _currentSnapshotItemCount = snapshot.Items.Count;
+
+                        // Show appropriate notification
+                        if (isOverwriting && diff != 0)
+                        {
+                            string diffStr = diff > 0 ? $"+{diff}" : diff.ToString();
+                            NotificationOverlay.ShowSuccess($"Snapshot Updated!\n{snapshot.Items.Count} items ({diffStr} from start)");
+                        }
+                        else
+                        {
+                            NotificationOverlay.ShowSuccess($"Snapshot Saved!\n{snapshot.Items.Count} items captured");
+                        }
+                    }
+                    else
+                    {
+                        NotificationOverlay.ShowSuccess($"Snapshot Saved!\n{snapshot.Items.Count} items captured");
+                    }
                 }
                 else
                 {
-                    Plugin.Log.LogError("Failed to save inventory snapshot");
-
-                    // Show large centered red error notification
+                    Plugin.Log.LogError("Failed to save manual snapshot");
                     NotificationOverlay.ShowError("Failed to Save Snapshot!");
                 }
             }
             else
             {
-                Plugin.Log.LogError("Failed to capture inventory snapshot");
-
-                // Show large centered red error notification
+                Plugin.Log.LogError("Failed to capture manual snapshot");
                 NotificationOverlay.ShowError("Failed to Capture Inventory!");
             }
         }
         catch (Exception ex)
         {
-            Plugin.Log.LogError($"Error handling snapshot keybind: {ex.Message}");
+            Plugin.Log.LogError($"Error handling manual snapshot: {ex.Message}");
             Plugin.Log.LogError($"Stack trace: {ex.StackTrace}");
         }
     }

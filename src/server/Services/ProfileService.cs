@@ -123,10 +123,10 @@ public class ProfileService
             // Define possible profile directory locations
             string[] possiblePaths = new[]
             {
-                // Standard SPT structure: H:\SPT\SPT\user\profiles
+                // Standard SPT structure: {SPT_ROOT}/SPT/user/profiles
                 Path.Combine(gameDirectory, "SPT", "user", "profiles"),
 
-                // Alternative: H:\SPT\user\profiles (if SPT folder structure is flat)
+                // Alternative: {SPT_ROOT}/user/profiles (if SPT folder structure is flat)
                 Path.Combine(gameDirectory, "user", "profiles"),
 
                 // Go up one level and back down: parent\SPT\user\profiles

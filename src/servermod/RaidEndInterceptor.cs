@@ -19,7 +19,7 @@
 //
 // SNAPSHOT FILES:
 // Created by the BepInEx client mod and stored in:
-// H:\SPT\BepInEx\plugins\Blackhorse311-KeepStartingGear\snapshots\{sessionId}.json
+// BepInEx/plugins/Blackhorse311-KeepStartingGear/snapshots/{sessionId}.json
 //
 // AUTHOR: Blackhorse311
 // LICENSE: MIT
@@ -72,19 +72,91 @@ public class RaidEndInterceptor(
     : MatchCallbacks(httpResponseUtil, matchController, databaseService)
 {
     // ========================================================================
-    // Constants
+    // Path Configuration
     // ========================================================================
 
     /// <summary>
     /// Path to snapshot files created by the BepInEx client mod.
+    /// Dynamically resolved based on the server mod's installation location.
     /// </summary>
-    private readonly string _snapshotsPath = @"H:\SPT\BepInEx\plugins\Blackhorse311-KeepStartingGear\snapshots";
+    /// <remarks>
+    /// <para>
+    /// The path is derived from the server mod's DLL location:
+    /// </para>
+    /// <list type="bullet">
+    ///   <item>Server mod DLL: {SPT_ROOT}\SPT\user\mods\Blackhorse311-KeepStartingGear\*.dll</item>
+    ///   <item>Navigate up 4 levels to reach SPT_ROOT</item>
+    ///   <item>Then: {SPT_ROOT}\BepInEx\plugins\Blackhorse311-KeepStartingGear\snapshots\</item>
+    /// </list>
+    /// <para>
+    /// This ensures the mod works regardless of where SPT is installed.
+    /// </para>
+    /// </remarks>
+    private readonly string _snapshotsPath = ResolveSnapshotsPath();
+
+    // ========================================================================
+    // Constants
+    // ========================================================================
 
     /// <summary>
     /// Equipment container template ID - identifies the root equipment container.
     /// All equipped items are children of this container.
     /// </summary>
     private const string EquipmentTemplateId = "55d7217a4bdc2d86028b456d";
+
+    /// <summary>
+    /// Mod folder name - used for both server and client mod folders.
+    /// </summary>
+    private const string ModFolderName = "Blackhorse311-KeepStartingGear";
+
+    // ========================================================================
+    // Path Resolution
+    // ========================================================================
+
+    /// <summary>
+    /// Resolves the snapshots path dynamically based on the server mod's DLL location.
+    /// </summary>
+    /// <returns>Full path to the snapshots directory</returns>
+    /// <remarks>
+    /// <para>
+    /// Path resolution logic:
+    /// </para>
+    /// <list type="number">
+    ///   <item>Get this DLL's location: {SPT_ROOT}\SPT\user\mods\{ModFolder}\*.dll</item>
+    ///   <item>Navigate up to SPT_ROOT (4 parent directories)</item>
+    ///   <item>Construct BepInEx path: {SPT_ROOT}\BepInEx\plugins\{ModFolder}\snapshots\</item>
+    /// </list>
+    /// </remarks>
+    private static string ResolveSnapshotsPath()
+    {
+        try
+        {
+            // Get the directory where this DLL is located
+            // e.g., {SPT_ROOT}/SPT/user/mods/Blackhorse311-KeepStartingGear/
+            string dllPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
+            string modDirectory = Path.GetDirectoryName(dllPath);
+
+            // Navigate up to SPT root:
+            // From: {SPT_ROOT}\SPT\user\mods\{ModFolder}\
+            // Up 1: {SPT_ROOT}\SPT\user\mods\
+            // Up 2: {SPT_ROOT}\SPT\user\
+            // Up 3: {SPT_ROOT}\SPT\
+            // Up 4: {SPT_ROOT}\
+            string sptRoot = Path.GetFullPath(Path.Combine(modDirectory, "..", "..", "..", ".."));
+
+            // Construct the BepInEx snapshots path
+            // {SPT_ROOT}\BepInEx\plugins\{ModFolder}\snapshots\
+            string snapshotsPath = Path.Combine(sptRoot, "BepInEx", "plugins", ModFolderName, "snapshots");
+
+            return snapshotsPath;
+        }
+        catch (Exception)
+        {
+            // Fallback to a relative path if resolution fails
+            // This shouldn't happen in normal circumstances
+            return Path.Combine("..", "..", "..", "BepInEx", "plugins", ModFolderName, "snapshots");
+        }
+    }
 
     // ========================================================================
     // Main Entry Point
@@ -119,6 +191,7 @@ public class RaidEndInterceptor(
             logger.Info($"[KeepStartingGear-Server] EndLocalRaid intercepted for session: {sessionID}");
             logger.Info($"[KeepStartingGear-Server] Exit status: {info.Results.Result}");
             logger.Info($"[KeepStartingGear-Server] Player side: {info.Results.Profile?.Info?.Side ?? "unknown"}");
+            logger.Debug($"[KeepStartingGear-Server] Snapshots path: {_snapshotsPath}");
 
             // Only process PMC deaths (Scav uses separate inventory)
             bool isPmc = info.Results.Profile?.Info?.Side != "Savage";

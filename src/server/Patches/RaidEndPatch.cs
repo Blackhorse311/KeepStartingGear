@@ -74,13 +74,16 @@ public class RaidEndPatch : ModulePatch
     /// <remarks>
     /// BaseLocalGame.Stop() is called when a raid ends for any reason.
     /// The exitStatus parameter tells us WHY it ended.
+    /// Uses SPT.Reflection.Utils to find the type to handle accessibility changes across versions.
     /// </remarks>
     protected override MethodBase GetTargetMethod()
     {
-        // Patch BaseLocalGame<EftGamePlayerOwner>.Stop
-        // This is the method called when a raid ends
-        return typeof(BaseLocalGame<EftGamePlayerOwner>).GetMethod(
-            nameof(BaseLocalGame<EftGamePlayerOwner>.Stop),
+        // Find BaseLocalGame<EftGamePlayerOwner> type using SPT reflection utilities
+        // This handles cases where the class may be internal in some SPT versions
+        var localGameType = SPT.Reflection.Utils.PatchConstants.LocalGameType;
+
+        return localGameType.GetMethod(
+            "Stop",
             BindingFlags.Public | BindingFlags.Instance
         );
     }
@@ -93,7 +96,6 @@ public class RaidEndPatch : ModulePatch
     /// Prefix method - runs BEFORE the raid end processing.
     /// Handles notifications and snapshot cleanup based on exit status.
     /// </summary>
-    /// <param name="__instance">The game instance</param>
     /// <param name="exitStatus">Why the raid ended (Killed, Survived, etc.)</param>
     /// <param name="exitName">The name of the exit point used</param>
     /// <remarks>
@@ -109,13 +111,18 @@ public class RaidEndPatch : ModulePatch
     /// The server-side component handles actual inventory restoration.
     /// This client-side code only handles UI feedback and cleanup.
     /// </para>
+    /// <para>
+    /// Note: We don't use the __instance parameter to avoid accessibility issues
+    /// with the BaseLocalGame class in different SPT versions.
+    /// </para>
     /// </remarks>
     [PatchPrefix]
-    private static void PatchPrefix(BaseLocalGame<EftGamePlayerOwner> __instance, ExitStatus exitStatus, string exitName)
+    private static void PatchPrefix(ExitStatus exitStatus, string exitName)
     {
         try
         {
             Plugin.Log.LogInfo($"Raid ending - Exit status: {exitStatus}, Exit name: {exitName}");
+            Plugin.Log.LogDebug($"Exit status enum value: {(int)exitStatus}");
 
             // Reset the snapshot limit tracking for the next raid
             // This allows a new snapshot to be taken in the next raid
