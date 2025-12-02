@@ -529,7 +529,23 @@ public static class Settings
         SaveArmorVest = BindInventorySlot(config, "Armor Vest", ref order);
         SavePockets = BindInventorySlot(config, "Pockets", ref order);
         SaveBackpack = BindInventorySlot(config, "Backpack", ref order);
-        SaveSecuredContainer = BindInventorySlot(config, "Secured Container", ref order);
+
+        // SecuredContainer needs a custom description to explain its unique behavior
+        SaveSecuredContainer = config.Bind(
+            CategoryInventory,
+            "Restore Secure Container to Snapshot",
+            true,
+            new ConfigDescription(
+                "When ENABLED: On death, secure container is restored to snapshot state.\n" +
+                "Items you put in during the raid (after snapshot) will be LOST.\n\n" +
+                "When DISABLED: Normal Tarkov behavior - secure container contents are always kept.\n" +
+                "Items you put in during the raid will be KEPT.\n\n" +
+                "TIP: Disable this to keep items you find during raids in your secure container.",
+                null,
+                new ConfigurationManagerAttributes { Order = order-- }
+            )
+        );
+
         SaveCompass = BindInventorySlot(config, "Compass", ref order);
         SaveSpecialSlot1 = BindInventorySlot(config, "Special Slot 1", ref order);
         SaveSpecialSlot2 = BindInventorySlot(config, "Special Slot 2", ref order);

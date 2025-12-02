@@ -976,6 +976,7 @@ public class InventoryService
 
                 // SPT profiles use "cartridges" for ammo in magazines, but EFT
                 // internally uses numeric IDs. We need to detect ammo and remap.
+                // IMPORTANT: Only remap for ammo INSIDE MAGAZINES, not loose ammo in grids!
 
                 // Check if containerId is a small number (magazine ammo slots are 0-99)
                 bool isNumericSlot = int.TryParse(containerId, out int slotNum) && slotNum >= 0 && slotNum < 100;
@@ -983,27 +984,48 @@ public class InventoryService
                 // Determine if this item is ammunition
                 bool isAmmoItem = DetectIfAmmo(item);
 
+                // Check if parent item is a magazine (only remap ammo in magazines, not in grids)
+                bool parentIsMagazine = false;
+                var parentItem = item.Parent?.Container?.ParentItem;
+                if (parentItem != null)
+                {
+                    var parentTypeName = parentItem.GetType().Name;
+                    parentIsMagazine = parentTypeName.Contains("Magazine") || parentTypeName.Contains("MagazineItem");
+
+                    // Also check if parent has a "Cartridges" property (definitive magazine indicator)
+                    if (!parentIsMagazine)
+                    {
+                        var cartridgesProp = parentItem.GetType().GetProperty("Cartridges");
+                        parentIsMagazine = cartridgesProp != null;
+                    }
+                }
+
                 // Log detailed debug info for stackable items
                 if (item.StackObjectsCount > 1 || isNumericSlot)
                 {
                     LogAmmoDebugInfo(item, containerId, isNumericSlot, isAmmoItem, serialized);
+                    Plugin.Log.LogInfo($"[AMMO DEBUG] parentIsMagazine={parentIsMagazine}, parentType={parentItem?.GetType().Name ?? "null"}");
                 }
 
-                // Remap numeric slot IDs to "cartridges" for ammunition
-                if (isNumericSlot && isAmmoItem)
+                // Remap numeric slot IDs to "cartridges" ONLY for ammo INSIDE MAGAZINES
+                // Loose ammo in grids (rigs, backpacks, pockets) should keep the grid slot ID
+                if (isNumericSlot && isAmmoItem && parentIsMagazine)
                 {
                     serialized.SlotId = "cartridges";
-                    Plugin.Log.LogInfo($"[AMMO] Remapped slotId from '{containerId}' to 'cartridges' for ammo item");
-                }
-                else if (isNumericSlot && item.StackObjectsCount > 1)
-                {
-                    // Fallback: if numeric slot with stack > 1, it's probably ammo
-                    serialized.SlotId = "cartridges";
-                    Plugin.Log.LogInfo($"[AMMO] Remapped slotId from '{containerId}' to 'cartridges' (stack count fallback)");
+                    Plugin.Log.LogInfo($"[AMMO] Remapped slotId from '{containerId}' to 'cartridges' for ammo in magazine");
                 }
                 else
                 {
+                    // Keep original slot ID for:
+                    // - Non-ammo items
+                    // - Loose ammo in grid containers (rigs, backpacks, pockets)
+                    // - Any item not in a magazine
                     serialized.SlotId = containerId;
+
+                    if (isAmmoItem && isNumericSlot && !parentIsMagazine)
+                    {
+                        Plugin.Log.LogInfo($"[AMMO] Keeping original slotId '{containerId}' for loose ammo in grid container");
+                    }
                 }
             }
 

@@ -237,7 +237,21 @@ public class RaidEndInterceptor(
 
         // Always call the base implementation to complete normal processing
         // This handles XP, quests, insurance, and other raid end logic
+        logger.Debug("[KeepStartingGear-Server] Calling base matchController.EndLocalRaid()...");
         matchController.EndLocalRaid(sessionID, info);
+        logger.Debug("[KeepStartingGear-Server] Base matchController.EndLocalRaid() completed.");
+
+        // Post-processing note (helps diagnose conflicts with other mods like SVM)
+        if (SnapshotRestorationState.InventoryRestoredFromSnapshot)
+        {
+            logger.Info("[KeepStartingGear-Server] POST-PROCESSING: Inventory restoration completed.");
+            logger.Info("[KeepStartingGear-Server] If gear is missing after raid, another mod (like SVM softcore) may be modifying inventory after us.");
+            logger.Info("[KeepStartingGear-Server] Check if SVM or similar mods have their own gear protection disabled.");
+
+            // Reset the flag for next raid
+            SnapshotRestorationState.InventoryRestoredFromSnapshot = false;
+        }
+
         return new ValueTask<string>(httpResponseUtil.NullResponse());
     }
 
@@ -339,41 +353,85 @@ public class RaidEndInterceptor(
             logger.Info($"[KeepStartingGear-Server] Snapshot Equipment ID: {snapshotEquipmentId}");
 
             // ================================================================
-            // Remove Current Equipment Items
+            // Determine Which Slots Were Captured in Snapshot
             // ================================================================
 
-            // Collect all equipment-related item IDs
+            // Get the set of slot IDs that ARE in the snapshot
+            // Items in slots NOT in this set should be preserved (user disabled that slot)
+            var snapshotSlotIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var snapshotItem in snapshot.Items)
+            {
+                // Only count direct children of Equipment (top-level slots)
+                if (snapshotItem.ParentId == snapshotEquipmentId && !string.IsNullOrEmpty(snapshotItem.SlotId))
+                {
+                    snapshotSlotIds.Add(snapshotItem.SlotId);
+                }
+            }
+
+            logger.Info($"[KeepStartingGear-Server] Snapshot contains slots: {string.Join(", ", snapshotSlotIds)}");
+
+            // ================================================================
+            // Remove Current Equipment Items (Only From Captured Slots)
+            // ================================================================
+
+            // Collect all equipment-related item IDs that should be removed
+            // Only remove items from slots that WERE captured in the snapshot
             var equipmentItemIds = new HashSet<string>();
 
-            // First, find direct children of Equipment
+            // Items to preserve (in slots not captured by snapshot)
+            var preservedItemIds = new HashSet<string>();
+
+            // First, find direct children of Equipment and categorize them
             foreach (var item in currentInventory.Items)
             {
                 if (item.ParentId == equipmentId)
                 {
-                    equipmentItemIds.Add(item.Id!);
+                    // Check if this slot was captured in the snapshot
+                    if (!string.IsNullOrEmpty(item.SlotId) && snapshotSlotIds.Contains(item.SlotId))
+                    {
+                        // This slot was captured - mark for removal (will be replaced by snapshot)
+                        equipmentItemIds.Add(item.Id!);
+                    }
+                    else
+                    {
+                        // This slot was NOT captured - preserve it (user disabled this slot)
+                        preservedItemIds.Add(item.Id!);
+                        logger.Info($"[KeepStartingGear-Server] Preserving item in slot '{item.SlotId}' (not in snapshot): {item.Template}");
+                    }
                 }
             }
 
-            // Then, recursively find all nested items (items inside those items)
+            // Then, recursively find all nested items
+            // Items nested inside preserved items should also be preserved
+            // Items nested inside removed items should also be removed
             bool foundMore = true;
             while (foundMore)
             {
                 foundMore = false;
                 foreach (var item in currentInventory.Items)
                 {
-                    if (item.ParentId != null &&
-                        equipmentItemIds.Contains(item.ParentId) &&
-                        !equipmentItemIds.Contains(item.Id!))
+                    if (item.ParentId != null)
                     {
-                        equipmentItemIds.Add(item.Id!);
-                        foundMore = true;
+                        // If parent is being removed, this item should be removed too
+                        if (equipmentItemIds.Contains(item.ParentId) && !equipmentItemIds.Contains(item.Id!))
+                        {
+                            equipmentItemIds.Add(item.Id!);
+                            foundMore = true;
+                        }
+                        // If parent is being preserved, this item should be preserved too
+                        else if (preservedItemIds.Contains(item.ParentId) && !preservedItemIds.Contains(item.Id!))
+                        {
+                            preservedItemIds.Add(item.Id!);
+                            foundMore = true;
+                        }
                     }
                 }
             }
 
             logger.Info($"[KeepStartingGear-Server] Found {equipmentItemIds.Count} equipment items to remove");
+            logger.Info($"[KeepStartingGear-Server] Preserving {preservedItemIds.Count} items in non-snapshot slots");
 
-            // Remove existing equipment items
+            // Remove only equipment items that are in captured slots
             currentInventory.Items.RemoveAll(item => equipmentItemIds.Contains(item.Id!));
 
             logger.Info($"[KeepStartingGear-Server] Removed equipment items, {currentInventory.Items.Count} items remaining");

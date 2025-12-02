@@ -171,22 +171,27 @@ public class RaidEndPatch : ModulePatch
                 NotificationOverlay.ShowSuccess($"Restoring Snapshot!\n{snapshot.Items.Count} items");
             }
             // ================================================================
-            // Handle Extraction (Clear Snapshot)
+            // Handle Extraction (Server Handles Snapshot Cleanup)
             // ================================================================
             else if (playerExtracted)
             {
-                Plugin.Log.LogInfo("Player extracted successfully - clearing snapshot");
+                Plugin.Log.LogInfo("Player extracted successfully");
 
-                // Clear any snapshot for this session
-                // The server also clears it, but we do it here too for safety
+                // NOTE: We intentionally DO NOT clear the snapshot here on the client side.
+                // The server handles snapshot cleanup in RaidEndInterceptor.EndLocalRaid()
+                // which has authoritative information about the actual player's session.
+                //
+                // This prevents a bug where PMC bots using certain extracts (like code-locked
+                // Smuggler's Boat) could trigger false extraction detection and wipe the
+                // player's snapshot prematurely.
+
                 var snapshot = SnapshotManager.Instance.GetMostRecentSnapshot();
                 if (snapshot != null)
                 {
-                    SnapshotManager.Instance.ClearSnapshot(snapshot.SessionId);
-                    Plugin.Log.LogInfo("Snapshot cleared - successful extraction");
+                    Plugin.Log.LogInfo($"Snapshot exists with {snapshot.Items.Count} items - server will clear it");
 
-                    // Show large centered green notification
-                    NotificationOverlay.ShowSuccess("Extracted Successfully!\nSnapshot cleared");
+                    // Show notification (server will handle actual cleanup)
+                    NotificationOverlay.ShowSuccess("Extracted Successfully!");
                 }
             }
             // ================================================================

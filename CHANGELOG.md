@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2025-12-01
+
+### Fixed
+
+- **Secure Container Deletion**: Fixed issue where disabling the Secure Container slot in config would delete the entire secure container on death. The server now preserves items in slots that were not captured in the snapshot. (Reported by @Recker)
+
+- **Ammo Stacks in Chest Rig**: Fixed issue where loose ammo stacks in tactical vests were not being restored. The ammo slot remapping now correctly identifies magazine containers vs grid containers. (Reported by @Recker)
+
+- **PMC Bot Extract Bug**: Fixed issue where PMC bots using code-locked extracts (like Smuggler's Boat) could trigger false extraction detection and wipe the player's snapshot. Snapshot cleanup is now handled exclusively by the server. (Reported by @SPDragon)
+
+### Changed
+
+- **Secure Container Option Renamed**: "Secured Container" renamed to "Restore Secure Container to Snapshot" with detailed description explaining the actual behavior:
+  - When ENABLED: Secure container restored to snapshot state (items added during raid are lost)
+  - When DISABLED: Normal Tarkov behavior (all secure container contents kept)
+
+### Added
+
+- **SVM Conflict Diagnostics**: Added logging to help diagnose conflicts with Server Value Mod (SVM) softcore mode. Server logs now indicate when restoration completes and suggests checking for mod conflicts.
+
+### Compatibility
+
+- SPT 4.0.x (tested on 4.0.7)
+
+---
+
 ## [1.1.0] - 2025-11-30
 
 ### Added
