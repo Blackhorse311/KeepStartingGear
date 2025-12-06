@@ -136,8 +136,10 @@ public class InventoryService
             var slotsToSave = GetSlotsToSave();
 
             // Capture all items recursively from enabled slots
+            // Also track which enabled slots were empty (for proper restoration)
             var allItems = new List<SerializedItem>();
-            CaptureAllItems(inventory, allItems, slotsToSave);
+            var emptySlots = new List<string>();
+            CaptureAllItems(inventory, allItems, slotsToSave, emptySlots);
 
             // Warn if no items were captured (might indicate misconfiguration)
             if (allItems.Count == 0)
@@ -153,6 +155,7 @@ public class InventoryService
                 Location = location,
                 Items = allItems,
                 IncludedSlots = slotsToSave,
+                EmptySlots = emptySlots,
                 TakenInRaid = inRaid,
                 ModVersion = Plugin.PluginVersion
             };
@@ -185,6 +188,7 @@ public class InventoryService
     /// <param name="inventory">The player's Inventory object</param>
     /// <param name="allItems">List to populate with captured items</param>
     /// <param name="slotsToSave">List of slot names that should be included</param>
+    /// <param name="emptySlots">List to populate with slot names that were enabled but empty</param>
     /// <remarks>
     /// <para>
     /// This method uses reflection to access the Equipment property and its slots
@@ -201,8 +205,13 @@ public class InventoryService
     /// The Equipment container itself is also captured first, as its ID is needed
     /// for proper parent-child relationships in the profile JSON.
     /// </para>
+    /// <para>
+    /// <b>Empty Slot Tracking:</b> When a slot is enabled in config but has no item,
+    /// it's added to the emptySlots list. This ensures the server knows to clear
+    /// items from that slot during restoration (preventing FIR items from being kept).
+    /// </para>
     /// </remarks>
-    private void CaptureAllItems(Inventory inventory, List<SerializedItem> allItems, List<string> slotsToSave)
+    private void CaptureAllItems(Inventory inventory, List<SerializedItem> allItems, List<string> slotsToSave, List<string> emptySlots)
     {
         try
         {
@@ -365,12 +374,18 @@ public class InventoryService
 
                 // Second pass: Process top-level equipment slots first
                 // These are filtered by the config
+                // Also track which slots have items for empty slot detection
+                var slotsWithItems = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
                 Plugin.Log.LogDebug("Second pass: Processing top-level equipment slots...");
                 foreach (var (slotName, item) in slotItems)
                 {
                     // Only process top-level equipment slots here
                     if (!topLevelEquipmentSlots.Contains(slotName))
                         continue;
+
+                    // Track that this slot has an item
+                    slotsWithItems.Add(slotName);
 
                     Plugin.Log.LogInfo($"[SLOT DEBUG] Found item in slot '{slotName}': {item.Template?.NameLocalizationKey ?? item.TemplateId}");
 
@@ -392,6 +407,28 @@ public class InventoryService
                     {
                         Plugin.Log.LogWarning($"[SLOT DEBUG]   -> SKIPPING slot '{slotName}' (not in slotsToSave list!)");
                     }
+                }
+
+                // Track empty slots: slots that are enabled in config but have no item
+                // This is critical for proper restoration - items looted into empty slots
+                // during raid should be removed on death
+                foreach (var enabledSlot in slotsToSave)
+                {
+                    // Only check top-level equipment slots
+                    if (!topLevelEquipmentSlots.Contains(enabledSlot))
+                        continue;
+
+                    // If this enabled slot doesn't have an item, it's empty
+                    if (!slotsWithItems.Contains(enabledSlot))
+                    {
+                        emptySlots.Add(enabledSlot);
+                        Plugin.Log.LogInfo($"[EMPTY SLOT] Slot '{enabledSlot}' is enabled but empty - will be cleared on restore");
+                    }
+                }
+
+                if (emptySlots.Count > 0)
+                {
+                    Plugin.Log.LogInfo($"[EMPTY SLOTS] Tracked {emptySlots.Count} empty slots: {string.Join(", ", emptySlots)}");
                 }
 
                 // Third pass: Process nested/mod slots
@@ -498,42 +535,126 @@ public class InventoryService
 
                                     if (gridPass == 1) Plugin.Log.LogInfo($"[GRID DEBUG]   Grid {gridCount}: ID={gridId}, Type={grid.GetType().Name}");
 
-                                    var gridItemsProperty = grid.GetType().GetProperty("Items");
-                                    if (gridItemsProperty != null)
+                                    // Try ItemCollection first (contains KeyValuePair<Item, LocationInGrid>)
+                                    var itemCollectionProp = grid.GetType().GetProperty("ItemCollection");
+                                    var containedItemsProp = grid.GetType().GetProperty("ContainedItems");
+                                    var collectionProp = itemCollectionProp ?? containedItemsProp;
+
+                                    if (collectionProp != null)
                                     {
-                                        var gridItems = gridItemsProperty.GetValue(grid) as System.Collections.IEnumerable;
-                                        if (gridItems != null)
+                                        var collection = collectionProp.GetValue(grid) as System.Collections.IEnumerable;
+                                        if (collection != null)
                                         {
                                             int itemCount = 0;
-                                            foreach (var gridItem in gridItems)
+                                            foreach (var kvp in collection)
                                             {
                                                 itemCount++;
-                                                if (gridItem is Item childItem && !capturedItemIds.Contains(childItem.Id))
-                                                {
-                                                    var serializedItem = ConvertToSerializedItem(childItem);
-                                                    if (serializedItem != null)
-                                                    {
-                                                        allItems.Add(serializedItem);
-                                                        capturedItemIds.Add(childItem.Id);
-                                                        newItemsToCheck.Add(childItem);
-                                                        gridItemsFound++;
-                                                        foundMore = true;
+                                                // kvp is KeyValuePair<Item, LocationInGrid>
+                                                var kvpType = kvp.GetType();
+                                                var keyProp = kvpType.GetProperty("Key");
+                                                var valueProp = kvpType.GetProperty("Value");
 
-                                                        Plugin.Log.LogInfo($"[CAPTURE] Added grid item: {serializedItem.Tpl} (ID: {serializedItem.Id}, Parent: {containerItem.Id}, Grid: {gridId})");
+                                                if (keyProp != null && valueProp != null)
+                                                {
+                                                    var childItem = keyProp.GetValue(kvp) as Item;
+                                                    var locationInGrid = valueProp.GetValue(kvp);
+
+                                                    if (childItem != null && !capturedItemIds.Contains(childItem.Id))
+                                                    {
+                                                        var serializedItem = ConvertToSerializedItem(childItem);
+                                                        if (serializedItem != null)
+                                                        {
+                                                            // Extract location from LocationInGrid
+                                                            if (locationInGrid != null)
+                                                            {
+                                                                var locType = locationInGrid.GetType();
+
+                                                                // Try to get x, y, r values - could be properties or fields
+                                                                object xVal = null, yVal = null, rVal = null;
+
+                                                                var xPropInfo = locType.GetProperty("x");
+                                                                var xFieldInfo = locType.GetField("x");
+                                                                if (xPropInfo != null)
+                                                                    xVal = xPropInfo.GetValue(locationInGrid);
+                                                                else if (xFieldInfo != null)
+                                                                    xVal = xFieldInfo.GetValue(locationInGrid);
+
+                                                                var yPropInfo = locType.GetProperty("y");
+                                                                var yFieldInfo = locType.GetField("y");
+                                                                if (yPropInfo != null)
+                                                                    yVal = yPropInfo.GetValue(locationInGrid);
+                                                                else if (yFieldInfo != null)
+                                                                    yVal = yFieldInfo.GetValue(locationInGrid);
+
+                                                                var rPropInfo = locType.GetProperty("r");
+                                                                var rFieldInfo = locType.GetField("r");
+                                                                if (rPropInfo != null)
+                                                                    rVal = rPropInfo.GetValue(locationInGrid);
+                                                                else if (rFieldInfo != null)
+                                                                    rVal = rFieldInfo.GetValue(locationInGrid);
+
+                                                                if (xVal != null && yVal != null)
+                                                                {
+                                                                    serializedItem.Location = new ItemLocation
+                                                                    {
+                                                                        X = Convert.ToInt32(xVal),
+                                                                        Y = Convert.ToInt32(yVal),
+                                                                        R = rVal != null ? Convert.ToInt32(rVal) : 0,
+                                                                        IsSearched = true
+                                                                    };
+                                                                    Plugin.Log.LogInfo($"[LOCATION] Captured from ItemCollection: {childItem.TemplateId} at X={serializedItem.Location.X}, Y={serializedItem.Location.Y}, R={serializedItem.Location.R}");
+                                                                }
+                                                            }
+
+                                                            allItems.Add(serializedItem);
+                                                            capturedItemIds.Add(childItem.Id);
+                                                            newItemsToCheck.Add(childItem);
+                                                            gridItemsFound++;
+                                                            foundMore = true;
+
+                                                            Plugin.Log.LogInfo($"[CAPTURE] Added grid item: {serializedItem.Tpl} (ID: {serializedItem.Id}, Parent: {containerItem.Id}, Grid: {gridId})");
+                                                        }
                                                     }
                                                 }
                                             }
-                                            if (gridPass == 1) Plugin.Log.LogInfo($"[GRID DEBUG]     Grid has {itemCount} items");
-                                        }
-                                        else if (gridPass == 1)
-                                        {
-                                            Plugin.Log.LogWarning($"[GRID DEBUG]     Items property returned null");
+                                            if (gridPass == 1) Plugin.Log.LogInfo($"[GRID DEBUG]     Grid has {itemCount} items via ItemCollection");
                                         }
                                     }
-                                    else if (gridPass == 1)
+                                    // Fallback to Items property if ItemCollection not available
+                                    else
                                     {
-                                        // Log what properties the grid DOES have
-                                        Plugin.Log.LogWarning($"[GRID DEBUG]     No Items property! Available: {string.Join(", ", grid.GetType().GetProperties().Select(p => p.Name).Take(10))}");
+                                        var gridItemsProperty = grid.GetType().GetProperty("Items");
+                                        if (gridItemsProperty != null)
+                                        {
+                                            var gridItems = gridItemsProperty.GetValue(grid) as System.Collections.IEnumerable;
+                                            if (gridItems != null)
+                                            {
+                                                int itemCount = 0;
+                                                foreach (var gridItem in gridItems)
+                                                {
+                                                    itemCount++;
+                                                    if (gridItem is Item childItem && !capturedItemIds.Contains(childItem.Id))
+                                                    {
+                                                        var serializedItem = ConvertToSerializedItem(childItem);
+                                                        if (serializedItem != null)
+                                                        {
+                                                            allItems.Add(serializedItem);
+                                                            capturedItemIds.Add(childItem.Id);
+                                                            newItemsToCheck.Add(childItem);
+                                                            gridItemsFound++;
+                                                            foundMore = true;
+
+                                                            Plugin.Log.LogInfo($"[CAPTURE] Added grid item (no location): {serializedItem.Tpl} (ID: {serializedItem.Id}, Parent: {containerItem.Id}, Grid: {gridId})");
+                                                        }
+                                                    }
+                                                }
+                                                if (gridPass == 1) Plugin.Log.LogInfo($"[GRID DEBUG]     Grid has {itemCount} items via Items property");
+                                            }
+                                            else if (gridPass == 1)
+                                            {
+                                                Plugin.Log.LogWarning($"[GRID DEBUG]     Items property returned null");
+                                            }
+                                        }
                                     }
                                 }
                                 if (gridPass == 1 && gridCount == 0) Plugin.Log.LogWarning($"[GRID DEBUG]   Grids collection is empty!");
@@ -553,40 +674,97 @@ public class InventoryService
                             }
                         }
 
-                        // Also check for Cartridges property (magazines)
-                        if (itemType.Name.Contains("Magazine") || itemType.Name.Contains("MagazineItem"))
+                        // Check for ammo boxes - they might use StackSlots like magazines
+                        // Ammo boxes have template IDs like 5737287724597765e1625ae2, 5737339e2459776af261abeb
+                        var tplStr = containerItem.TemplateId.ToString();
+                        if (tplStr.StartsWith("5737") || itemType.Name.Contains("Ammo") || itemType.Name.Contains("Box"))
                         {
-                            var cartridgesProp = itemType.GetProperty("Cartridges");
-                            if (cartridgesProp != null)
+                            Plugin.Log.LogInfo($"[AMMO BOX] Checking potential ammo box: {containerItem.TemplateId} Type: {itemType.Name}");
+
+                            // Log all properties and fields for debugging
+                            var allProps = itemType.GetProperties().Select(p => p.Name).ToArray();
+                            var allFields = itemType.GetFields(BindingFlags.Public | BindingFlags.Instance).Select(f => f.Name).ToArray();
+                            Plugin.Log.LogInfo($"[AMMO BOX] Properties: {string.Join(", ", allProps)}");
+                            Plugin.Log.LogInfo($"[AMMO BOX] Fields: {string.Join(", ", allFields)}");
+
+                            // Try StackSlot
+                            var stackSlotProp = itemType.GetProperty("StackSlot");
+                            if (stackSlotProp != null)
                             {
-                                var cartridges = cartridgesProp.GetValue(containerItem);
-                                if (cartridges != null)
+                                var stackSlot = stackSlotProp.GetValue(containerItem);
+                                if (stackSlot != null)
                                 {
-                                    // Try to get Items property from cartridges
-                                    var itemsProp = cartridges.GetType().GetProperty("Items");
+                                    Plugin.Log.LogInfo($"[AMMO BOX] Found StackSlot: {stackSlot.GetType().Name}");
+
+                                    // Get items from StackSlot
+                                    var itemsProp = stackSlot.GetType().GetProperty("Items");
                                     if (itemsProp != null)
                                     {
-                                        var ammoItems = itemsProp.GetValue(cartridges) as IEnumerable<Item>;
-                                        if (ammoItems != null)
+                                        var items = itemsProp.GetValue(stackSlot) as IEnumerable<Item>;
+                                        if (items != null)
                                         {
-                                            foreach (var ammo in ammoItems)
+                                            foreach (var ammoItem in items.ToList())
                                             {
-                                                if (ammo != null && !capturedItemIds.Contains(ammo.Id))
+                                                if (!capturedItemIds.Contains(ammoItem.Id))
                                                 {
-                                                    var serializedItem = ConvertToSerializedItem(ammo);
+                                                    var serializedItem = ConvertToSerializedItem(ammoItem);
                                                     if (serializedItem != null)
                                                     {
                                                         allItems.Add(serializedItem);
-                                                        capturedItemIds.Add(ammo.Id);
+                                                        capturedItemIds.Add(ammoItem.Id);
                                                         gridItemsFound++;
                                                         foundMore = true;
-
-                                                        Plugin.Log.LogInfo($"[CAPTURE] Added magazine ammo: {serializedItem.Tpl} (ID: {serializedItem.Id}, Parent: {containerItem.Id}, Stack: {ammo.StackObjectsCount})");
+                                                        Plugin.Log.LogInfo($"[AMMO BOX] Captured ammo from box: {ammoItem.TemplateId} Stack={ammoItem.StackObjectsCount}");
                                                     }
                                                 }
                                             }
                                         }
                                     }
+                                }
+                            }
+                        }
+
+                        // Check for Cartridges property (magazines AND ammo boxes)
+                        // AmmoBox type has Cartridges property just like magazines
+                        var cartridgesProp = itemType.GetProperty("Cartridges");
+                        if (cartridgesProp != null)
+                        {
+                            var cartridges = cartridgesProp.GetValue(containerItem);
+                            if (cartridges != null)
+                            {
+                                Plugin.Log.LogInfo($"[CARTRIDGES] Found Cartridges on {itemType.Name}: {cartridges.GetType().Name}");
+
+                                // Try to get Items property from cartridges
+                                var itemsProp = cartridges.GetType().GetProperty("Items");
+                                if (itemsProp != null)
+                                {
+                                    var ammoItems = itemsProp.GetValue(cartridges) as IEnumerable<Item>;
+                                    if (ammoItems != null)
+                                    {
+                                        int ammoCount = 0;
+                                        foreach (var ammo in ammoItems)
+                                        {
+                                            ammoCount++;
+                                            if (ammo != null && !capturedItemIds.Contains(ammo.Id))
+                                            {
+                                                var serializedItem = ConvertToSerializedItem(ammo);
+                                                if (serializedItem != null)
+                                                {
+                                                    allItems.Add(serializedItem);
+                                                    capturedItemIds.Add(ammo.Id);
+                                                    gridItemsFound++;
+                                                    foundMore = true;
+
+                                                    Plugin.Log.LogInfo($"[CARTRIDGES] Captured ammo from {itemType.Name}: {serializedItem.Tpl} (ID: {serializedItem.Id}, Parent: {containerItem.Id}, Stack: {ammo.StackObjectsCount})");
+                                                }
+                                            }
+                                        }
+                                        Plugin.Log.LogInfo($"[CARTRIDGES] {itemType.Name} contained {ammoCount} ammo items");
+                                    }
+                                }
+                                else
+                                {
+                                    Plugin.Log.LogWarning($"[CARTRIDGES] No Items property on Cartridges. Available: {string.Join(", ", cartridges.GetType().GetProperties().Select(p => p.Name).Take(10))}");
                                 }
                             }
                         }
@@ -1037,28 +1215,109 @@ public class InventoryService
             {
                 try
                 {
-                    var location = item.CurrentAddress.GetType().GetProperty("Location")?.GetValue(item.CurrentAddress);
-                    if (location != null)
-                    {
-                        var x = location.GetType().GetProperty("x")?.GetValue(location);
-                        var y = location.GetType().GetProperty("y")?.GetValue(location);
-                        var r = location.GetType().GetProperty("r")?.GetValue(location);
+                    var addressType = item.CurrentAddress.GetType();
+                    Plugin.Log.LogDebug($"[LOCATION] Item {item.TemplateId} address type: {addressType.Name}");
 
-                        if (x != null && y != null)
+                    var locationProp = addressType.GetProperty("LocationInGrid")
+                                    ?? addressType.GetProperty("Location");
+
+                    if (locationProp != null)
+                    {
+                        var location = locationProp.GetValue(item.CurrentAddress);
+                        if (location != null)
                         {
-                            serialized.Location = new ItemLocation
+                            Plugin.Log.LogDebug($"[LOCATION] Found location object for {item.TemplateId}: {location.GetType().Name}");
+                            var locationType = location.GetType();
+
+                            // Try both lowercase and uppercase property names
+                            var xProp = locationType.GetProperty("x") ?? locationType.GetProperty("X");
+                            var yProp = locationType.GetProperty("y") ?? locationType.GetProperty("Y");
+                            var rProp = locationType.GetProperty("r") ?? locationType.GetProperty("R");
+
+                            var x = xProp?.GetValue(location);
+                            var y = yProp?.GetValue(location);
+                            var r = rProp?.GetValue(location);
+
+                            if (x != null && y != null)
                             {
-                                X = Convert.ToInt32(x),
-                                Y = Convert.ToInt32(y),
-                                R = r != null ? Convert.ToInt32(r) : 0,
-                                IsSearched = true
-                            };
+                                serialized.Location = new ItemLocation
+                                {
+                                    X = Convert.ToInt32(x),
+                                    Y = Convert.ToInt32(y),
+                                    R = r != null ? Convert.ToInt32(r) : 0,
+                                    IsSearched = true
+                                };
+
+                                // Always log location capture to help debug grid position issues
+                                Plugin.Log.LogInfo($"[LOCATION] Captured grid position for {item.TemplateId}: X={serialized.Location.X}, Y={serialized.Location.Y}, R={serialized.Location.R}");
+                            }
+                            else
+                            {
+                                Plugin.Log.LogWarning($"[LOCATION] Location object found but X or Y is null for {item.TemplateId}: x={x}, y={y}");
+                            }
+                        }
+                        else
+                        {
+                            Plugin.Log.LogDebug($"[LOCATION] LocationInGrid/Location property exists but returned null for {item.TemplateId}");
+                        }
+                    }
+                    else
+                    {
+                        // This is normal for slot items (weapons in equipment slots, etc.)
+                        // Only log for items that seem like grid items based on SlotId
+                        var containerId = item.CurrentAddress.Container?.ID;
+                        if (containerId != null &&
+                            (containerId.StartsWith("main") || int.TryParse(containerId, out _)))
+                        {
+                            Plugin.Log.LogWarning($"[LOCATION] No LocationInGrid property for grid item {item.TemplateId} (SlotId={containerId}, AddressType={addressType.Name})");
+                            // Log ALL available properties for debugging
+                            var props = addressType.GetProperties().Select(p => $"{p.Name}:{p.PropertyType.Name}").ToArray();
+                            Plugin.Log.LogInfo($"[LOCATION] Available properties on {addressType.Name}: {string.Join(", ", props)}");
+
+                            // Also try to find any property with "Location" in the name or that returns a struct/class with x/y
+                            foreach (var prop in addressType.GetProperties())
+                            {
+                                try
+                                {
+                                    var val = prop.GetValue(item.CurrentAddress);
+                                    if (val != null)
+                                    {
+                                        var valType = val.GetType();
+                                        var xProp = valType.GetProperty("x") ?? valType.GetProperty("X");
+                                        var yProp = valType.GetProperty("y") ?? valType.GetProperty("Y");
+                                        if (xProp != null && yProp != null)
+                                        {
+                                            var x = xProp.GetValue(val);
+                                            var y = yProp.GetValue(val);
+                                            Plugin.Log.LogInfo($"[LOCATION] FOUND! Property '{prop.Name}' has x={x}, y={y}");
+
+                                            // Use this location!
+                                            var rProp = valType.GetProperty("r") ?? valType.GetProperty("R");
+                                            var r = rProp?.GetValue(val);
+                                            serialized.Location = new ItemLocation
+                                            {
+                                                X = Convert.ToInt32(x),
+                                                Y = Convert.ToInt32(y),
+                                                R = r != null ? Convert.ToInt32(r) : 0,
+                                                IsSearched = true
+                                            };
+                                            Plugin.Log.LogInfo($"[LOCATION] Captured via '{prop.Name}': X={serialized.Location.X}, Y={serialized.Location.Y}, R={serialized.Location.R}");
+                                            break;
+                                        }
+                                    }
+                                }
+                                catch { /* ignore errors during property inspection */ }
+                            }
                         }
                     }
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // Location capture failed - not critical, item will still restore
+                    // Location capture failed - log for debugging but continue
+                    if (Settings.EnableDebugMode.Value)
+                    {
+                        Plugin.Log.LogWarning($"[LOCATION] Failed to capture grid position for {item.TemplateId}: {ex.Message}");
+                    }
                 }
             }
 

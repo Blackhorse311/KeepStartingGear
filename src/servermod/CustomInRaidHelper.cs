@@ -27,10 +27,13 @@
 // LICENSE: MIT
 // ============================================================================
 
+using System.Text.Json;
 using SPTarkov.DI.Annotations;
 using SPTarkov.Server.Core.Helpers;
 using SPTarkov.Server.Core.Models.Common;
 using SPTarkov.Server.Core.Models.Eft.Common;
+using SPTarkov.Server.Core.Models.Eft.Common.Tables;
+using SPTarkov.Server.Core.Models.Enums;
 using SPTarkov.Server.Core.Models.Utils;
 using SPTarkov.Server.Core.Servers;
 using SPTarkov.Server.Core.Services;
@@ -127,25 +130,214 @@ public class CustomInRaidHelper : InRaidHelper
     /// </remarks>
     public override void DeleteInventory(PmcData pmcData, MongoId sessionId)
     {
-        // Check if inventory was restored from snapshot
+        // Check if inventory was already restored (by RaidEndInterceptor when not using SVM)
         if (SnapshotRestorationState.InventoryRestoredFromSnapshot)
         {
             _logger.Info("[KeepStartingGear-Server] Skipping DeleteInventory - inventory was restored from snapshot");
-
-            // Reset the state for future requests
             SnapshotRestorationState.Reset();
-
-            // Don't call base - this preserves the inventory we just restored
-            // The rest of death processing (XP loss, etc.) still proceeds normally
             return;
         }
 
-        // Normal death processing - call base to delete inventory
-        // This path is taken when:
-        // - No snapshot existed
-        // - Snapshot restoration failed
-        // - Player is a Scav (snapshots are PMC-only)
+        // Try to restore from snapshot (this handles SVM compatibility)
+        // When SVM is installed, RaidEndInterceptor never runs, so we do restoration here
+        if (TryRestoreFromSnapshot(sessionId.ToString(), pmcData))
+        {
+            _logger.Info("[KeepStartingGear-Server] Inventory restored from snapshot in DeleteInventory");
+            // Don't call base - we've restored the inventory
+            return;
+        }
+
+        // Normal death processing - no snapshot found
         _logger.Debug("[KeepStartingGear-Server] Normal death processing - DeleteInventory will proceed");
         base.DeleteInventory(pmcData, sessionId);
+    }
+
+    // ========================================================================
+    // Snapshot Restoration (SVM Compatible)
+    // ========================================================================
+
+    private const string EquipmentContainerTpl = "55d7217a4bdc2d86028b456d";
+    private const string ModFolderName = "Blackhorse311-KeepStartingGear";
+
+    private bool TryRestoreFromSnapshot(string sessionId, PmcData pmcData)
+    {
+        string snapshotsPath = ResolveSnapshotsPath();
+        if (string.IsNullOrEmpty(snapshotsPath))
+        {
+            _logger.Warning("[KeepStartingGear-Server] Could not resolve snapshots path");
+            return false;
+        }
+
+        string snapshotFile = System.IO.Path.Combine(snapshotsPath, $"{sessionId}.json");
+        if (!File.Exists(snapshotFile))
+        {
+            _logger.Debug($"[KeepStartingGear-Server] No snapshot found at: {snapshotFile}");
+            return false;
+        }
+
+        try
+        {
+            string snapshotJson = File.ReadAllText(snapshotFile);
+            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            var snapshot = JsonSerializer.Deserialize<InventorySnapshot>(snapshotJson, options);
+
+            if (snapshot?.Items == null || snapshot.Items.Count == 0)
+            {
+                _logger.Warning("[KeepStartingGear-Server] Snapshot is empty or invalid");
+                return false;
+            }
+
+            _logger.Info($"[KeepStartingGear-Server] Loaded snapshot with {snapshot.Items.Count} items");
+
+            // Find Equipment container in profile
+            string? profileEquipmentId = pmcData.Inventory.Items
+                .FirstOrDefault(i => i.Template == EquipmentContainerTpl)?.Id;
+
+            string? snapshotEquipmentId = snapshot.Items
+                .FirstOrDefault(i => i.Tpl == EquipmentContainerTpl)?.Id;
+
+            if (string.IsNullOrEmpty(profileEquipmentId))
+            {
+                _logger.Error("[KeepStartingGear-Server] Could not find Equipment container in profile");
+                return false;
+            }
+
+            // Track which slots had items in snapshot
+            var snapshotSlotIds = new HashSet<string>();
+            var emptySlotIds = new HashSet<string>();
+
+            foreach (var item in snapshot.Items)
+            {
+                if (item.ParentId == snapshotEquipmentId && !string.IsNullOrEmpty(item.SlotId))
+                {
+                    snapshotSlotIds.Add(item.SlotId);
+                }
+            }
+
+            if (snapshot.EmptySlots != null)
+            {
+                foreach (var slotId in snapshot.EmptySlots)
+                {
+                    emptySlotIds.Add(slotId);
+                }
+            }
+
+            // Remove equipment items that will be replaced
+            var equipmentItemIds = new HashSet<string>();
+            var preservedItemIds = new HashSet<string>();
+
+            foreach (var item in pmcData.Inventory.Items.ToList())
+            {
+                if (item.ParentId == profileEquipmentId && !string.IsNullOrEmpty(item.SlotId))
+                {
+                    if (snapshotSlotIds.Contains(item.SlotId) || emptySlotIds.Contains(item.SlotId))
+                    {
+                        equipmentItemIds.Add(item.Id!);
+                    }
+                    else
+                    {
+                        preservedItemIds.Add(item.Id!);
+                    }
+                }
+            }
+
+            // Find all children of items to remove
+            bool foundMore = true;
+            while (foundMore)
+            {
+                foundMore = false;
+                foreach (var item in pmcData.Inventory.Items)
+                {
+                    if (equipmentItemIds.Contains(item.ParentId!) && !equipmentItemIds.Contains(item.Id!))
+                    {
+                        equipmentItemIds.Add(item.Id!);
+                        foundMore = true;
+                    }
+                    else if (preservedItemIds.Contains(item.ParentId!) && !preservedItemIds.Contains(item.Id!))
+                    {
+                        preservedItemIds.Add(item.Id!);
+                        foundMore = true;
+                    }
+                }
+            }
+
+            // Remove equipment items
+            pmcData.Inventory.Items.RemoveAll(item => equipmentItemIds.Contains(item.Id!));
+            _logger.Info($"[KeepStartingGear-Server] Removed {equipmentItemIds.Count} items");
+
+            // Add snapshot items
+            int addedCount = 0;
+            foreach (var snapshotItem in snapshot.Items)
+            {
+                if (snapshotItem.Tpl == EquipmentContainerTpl)
+                    continue;
+
+                var newItem = new Item
+                {
+                    Id = snapshotItem.Id,
+                    Template = snapshotItem.Tpl,
+                    ParentId = snapshotItem.ParentId == snapshotEquipmentId
+                        ? profileEquipmentId
+                        : snapshotItem.ParentId,
+                    SlotId = snapshotItem.SlotId
+                };
+
+                if (snapshotItem.Location != null)
+                {
+                    newItem.Location = new ItemLocation
+                    {
+                        X = snapshotItem.Location.X,
+                        Y = snapshotItem.Location.Y,
+                        R = (ItemRotation)snapshotItem.Location.R,
+                        IsSearched = snapshotItem.Location.IsSearched
+                    };
+                }
+
+                if (snapshotItem.Upd != null)
+                {
+                    try
+                    {
+                        var updJson = JsonSerializer.Serialize(snapshotItem.Upd);
+                        newItem.Upd = JsonSerializer.Deserialize<Upd>(updJson);
+                    }
+                    catch { }
+                }
+
+                pmcData.Inventory.Items.Add(newItem);
+                addedCount++;
+            }
+
+            _logger.Info($"[KeepStartingGear-Server] Added {addedCount} items from snapshot");
+
+            // Delete snapshot file
+            try
+            {
+                File.Delete(snapshotFile);
+                _logger.Debug($"[KeepStartingGear-Server] Deleted snapshot file");
+            }
+            catch { }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error($"[KeepStartingGear-Server] Error restoring from snapshot: {ex.Message}");
+            return false;
+        }
+    }
+
+    private static string ResolveSnapshotsPath()
+    {
+        try
+        {
+            string dllPath = typeof(CustomInRaidHelper).Assembly.Location;
+            string? modFolder = System.IO.Path.GetDirectoryName(dllPath);
+            string sptRoot = System.IO.Path.GetFullPath(System.IO.Path.Combine(modFolder!, "..", "..", "..", ".."));
+            return System.IO.Path.Combine(sptRoot, "BepInEx", "plugins", ModFolderName, "snapshots");
+        }
+        catch
+        {
+            return "";
+        }
     }
 }

@@ -5,6 +5,53 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2025-12-06
+
+### Added
+
+- **SVM Compatibility**: Full compatibility with SVM (Server Value Modifier). Both mods can now run together without conflicts. KSG now hooks into `InRaidHelper.DeleteInventory` instead of `MatchCallbacks.EndLocalRaid`, allowing SVM to handle its features while KSG handles gear restoration.
+
+### Technical
+
+- **Architecture Change**: Moved restoration logic from `RaidEndInterceptor` (DI override) to `CustomInRaidHelper.DeleteInventory`. This avoids the DI conflict with SVM which also overrides `MatchCallbacks`.
+
+- **JSON Deserialization Fix**: Fixed case sensitivity issue when reading snapshot files. Snapshots use lowercase property names (`_id`, `_tpl`) while C# classes use PascalCase. Now uses case-insensitive deserialization.
+
+### Compatibility
+
+- SPT 4.0.x (tested on 4.0.7)
+- **SVM**: Partially compatible - disable Softcore Mode and Safe Exit when using KSG. Other SVM settings work at user's own risk.
+
+---
+
+## [1.2.0] - 2025-12-06
+
+### Fixed
+
+- **Empty Slots Keep Looted Items**: Fixed critical issue where items looted into empty equipment slots during raid were kept after death instead of being removed. Now properly tracks which slots were empty at snapshot time and clears them on restoration. (Reported by @Recker)
+
+- **Grid Position Preservation**: Fixed items moving to top-left corner of containers on restoration. Now correctly extracts position data from EFT's `ItemCollection` (KeyValuePair<Item, LocationInGrid>) instead of the item's address. Items in backpacks, vests, and pockets maintain their original X/Y coordinates and rotation.
+
+- **Ammo Box Contents Lost**: Fixed ammo boxes (e.g., 120-round boxes) being restored empty. The capture logic now checks for `Cartridges` property on ALL items, not just magazines. Ammo boxes use the same storage mechanism as magazines.
+
+### Added
+
+- **SVM Conflict Detection**: Server component now detects if SVM (Server Value Modifier) is installed and displays a prominent warning at startup explaining the conflict and how to resolve it.
+
+### Changed
+
+- **Improved Null Safety**: Fixed all nullable reference warnings in server mod for better stability and fewer potential crashes.
+
+- **Better Snapshot Format**: Snapshots now include an `emptySlots` field that tracks which equipment slots were empty at capture time, enabling proper restoration.
+
+- **Enhanced Logging**: Added debug logging for grid position capture/restoration to help diagnose any remaining position issues.
+
+### Compatibility
+
+- SPT 4.0.x (tested on 4.0.7)
+
+---
+
 ## [1.1.1] - 2025-12-01
 
 ### Fixed

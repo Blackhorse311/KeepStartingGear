@@ -37,7 +37,7 @@ TESTING_*.md
 .*settings*/
 
 # IDE working directories
-.claude/
+.editor/
 
 # Release packages (distributed separately)
 release/

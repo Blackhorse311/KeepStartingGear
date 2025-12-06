@@ -60,12 +60,12 @@ public record ModMetadata : AbstractModMetadata
     /// <summary>
     /// Human-readable name displayed in server console and mod lists.
     /// </summary>
-    public override string? Name { get; init; } = "Keep Starting Gear (Server)";
+    public override string Name { get; init; } = "Keep Starting Gear (Server)";
 
     /// <summary>
     /// Primary author of the mod.
     /// </summary>
-    public override string? Author { get; init; } = "Blackhorse311";
+    public override string Author { get; init; } = "Blackhorse311";
 
     /// <summary>
     /// List of additional contributors who helped with development.
@@ -77,7 +77,7 @@ public record ModMetadata : AbstractModMetadata
     /// Current version of the mod using Semantic Versioning.
     /// Format: MAJOR.MINOR.PATCH
     /// </summary>
-    public override SemanticVersioning.Version Version { get; init; } = new("1.1.1");
+    public override SemanticVersioning.Version Version { get; init; } = new("1.3.0");
 
     /// <summary>
     /// Range of compatible SPT server versions.
@@ -111,5 +111,5 @@ public record ModMetadata : AbstractModMetadata
     /// <summary>
     /// License under which this mod is distributed.
     /// </summary>
-    public override string? License { get; init; } = "MIT";
+    public override string License { get; init; } = "MIT";
 }

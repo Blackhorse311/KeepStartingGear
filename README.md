@@ -1,6 +1,6 @@
 # Keep Starting Gear
 
-**Version:** 1.1.1
+**Version:** 1.3.0
 **Author:** Blackhorse311
 **License:** MIT
 **SPT Compatibility:** 4.0.x (tested on 4.0.7)
@@ -182,6 +182,17 @@ Settings are locked when a raid starts. Changing snapshot mode mid-raid shows a 
 - **SPT Version**: 4.0.x (tested on 4.0.7)
 - **Fika**: Not tested - may not work in multiplayer scenarios
 - **Other Mods**: Should be compatible with most mods, including mods that add custom items
+
+### Mod Compatibility
+
+| Mod | Status | Notes |
+|-----|--------|-------|
+| **SVM (Server Value Modifier)** | **Partially Compatible** | Works alongside SVM as of v1.3.0, with exceptions noted below. |
+
+**SVM Compatibility Details:**
+- **Softcore Mode**: Incompatible - will conflict with KSG's gear restoration. Disable this if using KSG.
+- **Safe Exit**: Incompatible - interferes with KSG's death detection. Disable this if using KSG.
+- **Other SVM settings**: Use at your own risk. Most should work fine, but gear-related settings may produce unexpected results when combined with KSG.
 
 ---
 

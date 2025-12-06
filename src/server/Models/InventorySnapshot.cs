@@ -128,6 +128,19 @@ public class InventorySnapshot
     public List<string> IncludedSlots { get; set; }
 
     /// <summary>
+    /// List of slot names that were checked but found empty at snapshot time.
+    /// Used to ensure these slots are cleared during restoration.
+    /// </summary>
+    /// <remarks>
+    /// This is critical for the "empty slot" restoration issue:
+    /// If a slot was empty when snapshot was taken, and player loots an item
+    /// into that slot during raid, the item should be removed on death.
+    /// Without tracking empty slots, the server would preserve those items.
+    /// </remarks>
+    [JsonProperty("emptySlots")]
+    public List<string> EmptySlots { get; set; }
+
+    /// <summary>
     /// Whether this snapshot was taken while in raid or in hideout.
     /// Affects the snapshot limit rules (unlimited in hideout, one per map in raid).
     /// </summary>
@@ -159,6 +172,7 @@ public class InventorySnapshot
         Location = string.Empty;
         Items = new List<SerializedItem>();
         IncludedSlots = new List<string>();
+        EmptySlots = new List<string>();
         TakenInRaid = false;
         ModVersion = Plugin.PluginVersion;
     }

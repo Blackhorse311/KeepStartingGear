@@ -12,25 +12,35 @@
 //
 // KEY COMPONENTS:
 // - KeepStartingGearMod (this file): Entry point, IOnLoad implementation
-// - RaidEndInterceptor: Intercepts EndLocalRaid to restore inventory
-// - CustomInRaidHelper: Overrides DeleteInventory to preserve restored items
+// - CustomInRaidHelper: Overrides InRaidHelper.DeleteInventory for restoration
+// - RaidEndInterceptor: Handles restoration when SVM is not installed
 // - SnapshotRestorationState: Thread-safe state communication between components
 // - ModMetadata: SPT mod registration information
 //
 // HOW IT WORKS:
 // 1. SPT loads this assembly and discovers the [Injectable] classes
 // 2. KeepStartingGearMod.OnLoad() runs during server startup
-// 3. RaidEndInterceptor intercepts all EndLocalRaid requests
-// 4. If player died with a valid snapshot, restore inventory from snapshot
-// 5. CustomInRaidHelper skips normal inventory deletion after restoration
+// 3. When player dies, SPT calls InRaidHelper.DeleteInventory()
+// 4. CustomInRaidHelper.DeleteInventory() checks for snapshots and restores
+// 5. If restoration succeeds, normal inventory deletion is skipped
+//
+// SVM COMPATIBILITY:
+// SVM overrides MatchCallbacks.EndLocalRaid via DI (dependency injection).
+// We override InRaidHelper.DeleteInventory instead - a different service.
+// Both mods can coexist since they hook different parts of the death flow.
 //
 // AUTHOR: Blackhorse311
 // LICENSE: MIT
 // ============================================================================
 
 using SPTarkov.DI.Annotations;
+using SPTarkov.Reflection.Patching;
+using SPTarkov.Server.Core.Controllers;
 using SPTarkov.Server.Core.DI;
+using SPTarkov.Server.Core.Models.Common;
+using SPTarkov.Server.Core.Models.Eft.Match;
 using SPTarkov.Server.Core.Models.Utils;
+using System.Reflection;
 
 namespace Blackhorse311.KeepStartingGear.Server;
 
@@ -72,14 +82,56 @@ public class KeepStartingGearMod(ISptLogger<KeepStartingGearMod> logger) : IOnLo
 
     public Task OnLoad()
     {
-        logger.Info("[KeepStartingGear-Server] Server component loaded successfully!");
+        logger.Info("[KeepStartingGear-Server] ============================================");
+        logger.Info("[KeepStartingGear-Server] Keep Starting Gear v1.3.0 - Server Component");
+        logger.Info("[KeepStartingGear-Server] ============================================");
         logger.Info("[KeepStartingGear-Server] Inventory restoration service ready.");
 
         // Log the dynamically resolved snapshots path
         string snapshotsPath = ResolveSnapshotsPath();
         logger.Info($"[KeepStartingGear-Server] Snapshots location: {snapshotsPath}");
 
+        // Check for known conflicting mods
+        CheckForConflictingMods();
+
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Checks for known conflicting mods and logs warnings if detected.
+    /// </summary>
+    private void CheckForConflictingMods()
+    {
+        try
+        {
+            string dllPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
+            string? modDirectory = System.IO.Path.GetDirectoryName(dllPath);
+
+            if (string.IsNullOrEmpty(modDirectory))
+                return;
+
+            // Navigate to user/mods directory
+            string modsDirectory = System.IO.Path.GetFullPath(System.IO.Path.Combine(modDirectory, ".."));
+
+            // Check for SVM (Server Value Modifier)
+            string[] svmFolderPatterns = { "SVM", "ServerValueModifier", "svm", "servervaluemodifier" };
+            foreach (var pattern in svmFolderPatterns)
+            {
+                string potentialPath = System.IO.Path.Combine(modsDirectory, pattern);
+                if (System.IO.Directory.Exists(potentialPath))
+                {
+                    logger.Info("[KeepStartingGear-Server] SVM (Server Value Modifier) detected.");
+                    logger.Info("[KeepStartingGear-Server] Using Harmony patching for SVM compatibility.");
+                    logger.Info("[KeepStartingGear-Server] Note: If SVM's 'Save Gear After Death' is enabled,");
+                    logger.Info("[KeepStartingGear-Server]       it may override KeepStartingGear's selective restoration.");
+                    return;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.Debug($"[KeepStartingGear-Server] Could not check for conflicting mods: {ex.Message}");
+        }
     }
 
     /// <summary>
@@ -93,7 +145,12 @@ public class KeepStartingGearMod(ISptLogger<KeepStartingGearMod> logger) : IOnLo
             // Get the directory where this DLL is located
             // e.g., {SPT_ROOT}/SPT/user/mods/Blackhorse311-KeepStartingGear/
             string dllPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
-            string modDirectory = System.IO.Path.GetDirectoryName(dllPath);
+            string? modDirectory = System.IO.Path.GetDirectoryName(dllPath);
+
+            if (string.IsNullOrEmpty(modDirectory))
+            {
+                return "<path resolution failed: could not get mod directory>";
+            }
 
             // Navigate up to SPT root:
             // From: {SPT_ROOT}\SPT\user\mods\{ModFolder}\
