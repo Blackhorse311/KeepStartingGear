@@ -104,12 +104,41 @@ public class GameStartPatch : ModulePatch
             // This is important because restoration should only happen once per raid
             PostRaidInventoryPatch.ResetRestorationFlag();
 
+            // Reset the raid end tracking flag so we can detect the actual player's raid end
+            // This prevents bot extractions from being mistaken for player extractions
+            RaidEndPatch.ResetRaidEndFlag();
+
             // Get the main player from the GameWorld
             // MainPlayer is the human player (not bots/scavs)
             var player = __instance.MainPlayer;
 
             if (player != null && player.gameObject != null)
             {
+                // ================================================================
+                // SCAV RAID CHECK
+                // ================================================================
+                // Only attach KeybindMonitor for PMC raids, not Scav raids
+                // Scav raids should not have gear protection - you're playing as a disposable scav
+                // EPlayerSide.Savage = Scav, EPlayerSide.Usec/Bear = PMC
+                if (player.Side == EPlayerSide.Savage)
+                {
+                    Plugin.Log.LogInfo("Scav raid detected - KeepStartingGear is disabled for Scav runs");
+                    return; // Do not attach KeybindMonitor for Scav raids
+                }
+
+                // ================================================================
+                // MOD ENABLED CHECK
+                // ================================================================
+                // Check if the mod is enabled in F12 settings
+                // This allows users to disable the mod without restarting the game
+                if (!Configuration.Settings.ModEnabled.Value)
+                {
+                    Plugin.Log.LogInfo("KeepStartingGear is disabled in settings - not activating for this raid");
+                    return;
+                }
+
+                Plugin.Log.LogInfo($"PMC raid detected (Side: {player.Side}) - enabling KeepStartingGear");
+
                 // Attach KeybindMonitor as a Unity component to the player's GameObject
                 // This allows it to receive Unity lifecycle callbacks (Update, etc.)
                 var monitor = player.gameObject.AddComponent<KeybindMonitor>();

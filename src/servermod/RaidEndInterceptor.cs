@@ -303,6 +303,10 @@ public class RaidEndInterceptor(
 
             // Read and deserialize snapshot
             var snapshotJson = File.ReadAllText(snapshotPath);
+
+            // Debug: Log part of the raw JSON to verify structure
+            logger.Debug($"[KeepStartingGear-Server] Raw snapshot JSON preview: {snapshotJson.Substring(0, Math.Min(500, snapshotJson.Length))}...");
+
             var snapshot = JsonSerializer.Deserialize<InventorySnapshot>(snapshotJson, new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true
@@ -315,6 +319,16 @@ public class RaidEndInterceptor(
             }
 
             logger.Info($"[KeepStartingGear-Server] Snapshot contains {snapshot.Items.Count} items");
+
+            // Debug: Log deserialized IncludedSlots
+            if (snapshot.IncludedSlots != null)
+            {
+                logger.Info($"[KeepStartingGear-Server] Deserialized IncludedSlots: [{string.Join(", ", snapshot.IncludedSlots)}]");
+            }
+            else
+            {
+                logger.Warning("[KeepStartingGear-Server] IncludedSlots is NULL after deserialization!");
+            }
 
             // Get current inventory from the raid end data
             var currentInventory = info.Results?.Profile?.Inventory;
@@ -361,8 +375,24 @@ public class RaidEndInterceptor(
             logger.Info($"[KeepStartingGear-Server] Snapshot Equipment ID: {snapshotEquipmentId}");
 
             // ================================================================
-            // Determine Which Slots Were Captured in Snapshot
+            // Determine Which Slots Were Configured for Capture
             // ================================================================
+
+            // Get the set of slot IDs that USER ENABLED in settings (IncludedSlots)
+            // This is the authoritative list of what slots should be managed by the mod
+            var includedSlotIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (snapshot.IncludedSlots != null && snapshot.IncludedSlots.Count > 0)
+            {
+                foreach (var slot in snapshot.IncludedSlots)
+                {
+                    includedSlotIds.Add(slot);
+                }
+                logger.Info($"[KeepStartingGear-Server] User configured slots to manage: {string.Join(", ", includedSlotIds)}");
+            }
+            else
+            {
+                logger.Warning("[KeepStartingGear-Server] No IncludedSlots in snapshot - this is a legacy snapshot, will use item-based detection");
+            }
 
             // Get the set of slot IDs that HAVE ITEMS in the snapshot
             var snapshotSlotIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -394,17 +424,16 @@ public class RaidEndInterceptor(
             }
 
             // ================================================================
-            // Remove Current Equipment Items (From Captured Slots AND Empty Slots)
+            // Remove Current Equipment Items (From Managed Slots)
             // ================================================================
 
             // Collect all equipment-related item IDs that should be removed
-            // Remove items from:
-            // 1. Slots that HAD items in the snapshot (will be replaced by snapshot items)
-            // 2. Slots that were EMPTY in the snapshot (items looted during raid should be lost)
+            // Remove items from slots that are MANAGED by the mod (in IncludedSlots)
+            // Preserve items from slots NOT managed by the mod (user disabled them)
             var equipmentItemIds = new HashSet<string>();
 
-            // Items to preserve (in slots not captured by snapshot AND not marked empty)
-            var preservedItemIds = new HashSet<string>();
+            // Items to preserve (in slots NOT managed by the mod)
+            // Note: ALL equipment items are removed on death, then snapshot items are restored
 
             // First, find direct children of Equipment and categorize them
             foreach (var item in currentInventory.Items)
@@ -413,32 +442,54 @@ public class RaidEndInterceptor(
                 {
                     var slotId = item.SlotId ?? "";
 
-                    // Check if this slot was captured in the snapshot (has items to restore)
-                    if (snapshotSlotIds.Contains(slotId))
+                    // Determine if this slot is managed by the mod
+                    // A slot is managed if:
+                    // 1. It's in IncludedSlots (user enabled it), OR
+                    // 2. No IncludedSlots exist (legacy snapshot) AND it's in snapshotSlotIds or emptySlotIds
+                    bool slotIsManaged;
+                    if (includedSlotIds.Count > 0)
                     {
-                        // This slot was captured with items - mark for removal (will be replaced by snapshot)
-                        equipmentItemIds.Add(item.Id!);
-                        logger.Debug($"[KeepStartingGear-Server] Removing item from slot '{slotId}' (will be restored from snapshot): {item.Template}");
-                    }
-                    // Check if this slot was EMPTY in the snapshot
-                    else if (emptySlotIds.Contains(slotId))
-                    {
-                        // This slot was empty at snapshot time - remove the item (looted during raid)
-                        equipmentItemIds.Add(item.Id!);
-                        logger.Info($"[KeepStartingGear-Server] Removing item from slot '{slotId}' (slot was empty at snapshot time): {item.Template}");
+                        // Modern snapshot: use IncludedSlots as authoritative source
+                        slotIsManaged = includedSlotIds.Contains(slotId);
                     }
                     else
                     {
-                        // This slot was NOT in snapshot (user disabled it) - preserve it
-                        preservedItemIds.Add(item.Id!);
-                        logger.Info($"[KeepStartingGear-Server] Preserving item in slot '{slotId}' (slot not tracked by snapshot): {item.Template}");
+                        // Legacy snapshot: fall back to old behavior
+                        slotIsManaged = snapshotSlotIds.Contains(slotId) || emptySlotIds.Contains(slotId);
+                    }
+
+                    // ALL equipment items are removed (player died)
+                    // The difference is:
+                    // - Managed slots: Items will be RESTORED from snapshot
+                    // - Non-managed slots: Items will be LOST (normal death penalty)
+                    equipmentItemIds.Add(item.Id!);
+
+                    if (slotIsManaged)
+                    {
+                        if (snapshotSlotIds.Contains(slotId))
+                        {
+                            logger.Debug($"[KeepStartingGear-Server] Removing item from slot '{slotId}' (will be restored from snapshot): {item.Template}");
+                        }
+                        else if (emptySlotIds.Contains(slotId))
+                        {
+                            logger.Info($"[KeepStartingGear-Server] Removing item from slot '{slotId}' (slot was empty at snapshot time - loot lost): {item.Template}");
+                        }
+                        else
+                        {
+                            // Slot is in IncludedSlots but wasn't in snapshot (maybe added after snapshot?)
+                            logger.Info($"[KeepStartingGear-Server] Removing item from slot '{slotId}' (slot is managed but had no snapshot data): {item.Template}");
+                        }
+                    }
+                    else
+                    {
+                        // This slot is NOT managed by the mod - normal death penalty applies
+                        // Items in this slot are LOST (not restored from snapshot)
+                        logger.Info($"[KeepStartingGear-Server] Removing item from slot '{slotId}' (slot not protected - normal death penalty): {item.Template}");
                     }
                 }
             }
 
-            // Then, recursively find all nested items
-            // Items nested inside preserved items should also be preserved
-            // Items nested inside removed items should also be removed
+            // Then, recursively find all nested items (items inside containers being removed)
             bool foundMore = true;
             while (foundMore)
             {
@@ -453,18 +504,11 @@ public class RaidEndInterceptor(
                             equipmentItemIds.Add(item.Id!);
                             foundMore = true;
                         }
-                        // If parent is being preserved, this item should be preserved too
-                        else if (preservedItemIds.Contains(item.ParentId) && !preservedItemIds.Contains(item.Id!))
-                        {
-                            preservedItemIds.Add(item.Id!);
-                            foundMore = true;
-                        }
                     }
                 }
             }
 
-            logger.Info($"[KeepStartingGear-Server] Found {equipmentItemIds.Count} equipment items to remove");
-            logger.Info($"[KeepStartingGear-Server] Preserving {preservedItemIds.Count} items in non-snapshot slots");
+            logger.Info($"[KeepStartingGear-Server] Found {equipmentItemIds.Count} equipment items to remove (all equipment lost on death)");
 
             // Remove only equipment items that are in captured slots
             currentInventory.Items.RemoveAll(item => equipmentItemIds.Contains(item.Id!));
@@ -475,7 +519,20 @@ public class RaidEndInterceptor(
             // Add Snapshot Items
             // ================================================================
 
+            // CRITICAL: Build a set of all existing item IDs to prevent duplicates
+            // This fixes the "An item with the same key has already been added" crash
+            var existingItemIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var item in currentInventory.Items)
+            {
+                if (!string.IsNullOrEmpty(item.Id))
+                {
+                    existingItemIds.Add(item.Id);
+                }
+            }
+            logger.Info($"[KeepStartingGear-Server] Existing inventory has {existingItemIds.Count} items before restoration");
+
             int addedCount = 0;
+            int skippedDuplicates = 0;
             foreach (var snapshotItem in snapshot.Items)
             {
                 // Skip the Equipment container - keep the profile's original
@@ -486,6 +543,15 @@ public class RaidEndInterceptor(
                 if (string.IsNullOrEmpty(snapshotItem.Id) || string.IsNullOrEmpty(snapshotItem.Tpl))
                 {
                     logger.Warning($"[KeepStartingGear-Server] Skipping item with missing Id or Tpl");
+                    continue;
+                }
+
+                // CRITICAL: Check for duplicate item ID before adding
+                // This prevents the "An item with the same key has already been added" crash
+                if (existingItemIds.Contains(snapshotItem.Id))
+                {
+                    logger.Warning($"[KeepStartingGear-Server] DUPLICATE PREVENTED: Item {snapshotItem.Id} (Tpl={snapshotItem.Tpl}) already exists in inventory - skipping to prevent crash");
+                    skippedDuplicates++;
                     continue;
                 }
 
@@ -508,9 +574,19 @@ public class RaidEndInterceptor(
                     newItem.ParentId = snapshotItem.ParentId;
                 }
 
-                // Copy location data (grid position for container items)
-                if (snapshotItem.Location != null)
+                // Copy location data (grid position for container items OR integer position for cartridges)
+                if (snapshotItem.LocationIndex.HasValue)
                 {
+                    // CARTRIDGE LOCATION: Use integer position for magazine cartridges
+                    // SPT profiles expect cartridges to have integer locations (0, 1, 2, etc.)
+                    // This is set directly on the Location property as an integer
+                    newItem.Location = snapshotItem.LocationIndex.Value;
+
+                    logger.Info($"[KeepStartingGear-Server] [CARTRIDGE] Restored cartridge position {snapshotItem.LocationIndex.Value} for {snapshotItem.Tpl} (ID: {snapshotItem.Id})");
+                }
+                else if (snapshotItem.Location != null)
+                {
+                    // GRID LOCATION: Use x/y/r object for container items
                     newItem.Location = new ItemLocation
                     {
                         X = snapshotItem.Location.X,
@@ -587,6 +663,7 @@ public class RaidEndInterceptor(
                 }
 
                 currentInventory.Items.Add(newItem);
+                existingItemIds.Add(newItem.Id!); // Track newly added item to prevent duplicates within snapshot
                 addedCount++;
 
                 // Verify the item was added with correct data
@@ -603,6 +680,10 @@ public class RaidEndInterceptor(
             }
 
             logger.Info($"[KeepStartingGear-Server] Added {addedCount} items from snapshot");
+            if (skippedDuplicates > 0)
+            {
+                logger.Warning($"[KeepStartingGear-Server] SKIPPED {skippedDuplicates} duplicate items to prevent crash");
+            }
             logger.Info($"[KeepStartingGear-Server] Total items now: {currentInventory.Items.Count}");
 
             // ================================================================
@@ -670,27 +751,38 @@ public class RaidEndInterceptor(
 /// Represents a snapshot of inventory items.
 /// Mirrors the client-side InventorySnapshot class for deserialization.
 /// </summary>
+/// <remarks>
+/// All properties use explicit JsonPropertyName attributes to match the client's
+/// Newtonsoft.Json serialization which uses camelCase property names.
+/// </remarks>
 public class InventorySnapshot
 {
     /// <summary>Player's session/profile ID</summary>
+    [System.Text.Json.Serialization.JsonPropertyName("sessionId")]
     public string? SessionId { get; set; }
 
     /// <summary>Profile ID (may be same as SessionId)</summary>
+    [System.Text.Json.Serialization.JsonPropertyName("profileId")]
     public string? ProfileId { get; set; }
 
     /// <summary>Player's character name</summary>
+    [System.Text.Json.Serialization.JsonPropertyName("playerName")]
     public string? PlayerName { get; set; }
 
     /// <summary>When the snapshot was taken</summary>
+    [System.Text.Json.Serialization.JsonPropertyName("timestamp")]
     public DateTime Timestamp { get; set; }
 
-    /// <summary>Whether snapshot was taken during raid</summary>
-    public bool IsInRaid { get; set; }
+    /// <summary>Whether snapshot was taken during raid (client uses takenInRaid)</summary>
+    [System.Text.Json.Serialization.JsonPropertyName("takenInRaid")]
+    public bool TakenInRaid { get; set; }
 
     /// <summary>Map/location where snapshot was taken</summary>
+    [System.Text.Json.Serialization.JsonPropertyName("location")]
     public string? Location { get; set; }
 
     /// <summary>List of all captured items</summary>
+    [System.Text.Json.Serialization.JsonPropertyName("items")]
     public List<SnapshotItem> Items { get; set; } = new();
 
     /// <summary>List of slot names that were included in the snapshot config</summary>
@@ -703,6 +795,10 @@ public class InventorySnapshot
     /// </summary>
     [System.Text.Json.Serialization.JsonPropertyName("emptySlots")]
     public List<string>? EmptySlots { get; set; }
+
+    /// <summary>Mod version that created this snapshot</summary>
+    [System.Text.Json.Serialization.JsonPropertyName("modVersion")]
+    public string? ModVersion { get; set; }
 }
 
 /// <summary>
@@ -734,6 +830,14 @@ public class SnapshotItem
     /// <summary>Grid position (for container items)</summary>
     [System.Text.Json.Serialization.JsonPropertyName("location")]
     public ItemLocationData? Location { get; set; }
+
+    /// <summary>
+    /// Integer position index for cartridges in magazines.
+    /// SPT profiles use integer locations (0, 1, 2, etc.) for cartridges
+    /// instead of the grid-style x/y/r object used for container items.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonPropertyName("locationIndex")]
+    public int? LocationIndex { get; set; }
 
     /// <summary>Update data (stack count, durability, etc.)</summary>
     [System.Text.Json.Serialization.JsonPropertyName("upd")]

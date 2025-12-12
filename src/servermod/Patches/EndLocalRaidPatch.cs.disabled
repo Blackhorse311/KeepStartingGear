@@ -1,0 +1,460 @@
+// ============================================================================
+// Keep Starting Gear - EndLocalRaid Harmony Patch
+// ============================================================================
+// This patch intercepts MatchController.EndLocalRaid using Harmony.
+// It runs BEFORE any MatchCallbacks override (like SVM), ensuring compatibility.
+//
+// WHY HARMONY INSTEAD OF DI OVERRIDE:
+// - SPT's DI can only have ONE MatchCallbacks implementation
+// - SVM also overrides MatchCallbacks, causing a conflict
+// - Harmony patches run on the actual method, before any DI overrides
+// - This allows KSG and SVM to coexist
+//
+// AUTHOR: Blackhorse311
+// LICENSE: MIT
+// ============================================================================
+
+using System.Reflection;
+using System.Text.Json;
+using SPTarkov.DI.Annotations;
+using SPTarkov.Reflection.Patching;
+using SPTarkov.Server.Core.Controllers;
+using SPTarkov.Server.Core.DI;
+using SPTarkov.Server.Core.Models.Common;
+using SPTarkov.Server.Core.Models.Eft.Common.Tables;
+using SPTarkov.Server.Core.Models.Eft.Match;
+using SPTarkov.Server.Core.Models.Enums;
+using SPTarkov.Server.Core.Models.Utils;
+using Path = System.IO.Path;
+
+namespace Blackhorse311.KeepStartingGear.Server.Patches;
+
+/// <summary>
+/// Harmony Prefix patch for MatchController.EndLocalRaid.
+/// Modifies inventory data BEFORE the method executes, enabling snapshot restoration.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>Compatibility with SVM:</b>
+/// </para>
+/// <list type="bullet">
+///   <item>SVM overrides MatchCallbacks.EndLocalRaid via DI</item>
+///   <item>This patch runs on MatchController.EndLocalRaid (the actual implementation)</item>
+///   <item>Harmony Prefix patches run BEFORE the method body</item>
+///   <item>We modify the inventory data before SVM or base processing sees it</item>
+/// </list>
+/// <para>
+/// <b>Flow:</b>
+/// </para>
+/// <list type="number">
+///   <item>Request arrives at MatchCallbacks.EndLocalRaid (SVM's or base)</item>
+///   <item>Callback calls MatchController.EndLocalRaid(sessionID, info)</item>
+///   <item>OUR PATCH RUNS HERE - modifies info.Results.Profile.Inventory.Items</item>
+///   <item>Original MatchController.EndLocalRaid executes with modified data</item>
+/// </list>
+/// </remarks>
+[Injectable(TypePriority = OnLoadOrder.PostDBModLoader)]
+public class EndLocalRaidPatch : AbstractPatch
+{
+    // Static path to snapshots folder - resolved lazily
+    private static string? _snapshotsPath;
+    private static bool _initialized = false;
+
+    // Equipment container template ID
+    private const string EquipmentContainerTpl = "55d7217a4bdc2d86028b456d";
+
+    /// <summary>
+    /// Ensures the patch is initialized (resolves paths on first use).
+    /// </summary>
+    private static void EnsureInitialized()
+    {
+        if (!_initialized)
+        {
+            _snapshotsPath = ResolveSnapshotsPath();
+            _initialized = true;
+            Console.WriteLine($"[KeepStartingGear] EndLocalRaidPatch initialized. Snapshots path: {_snapshotsPath}");
+        }
+    }
+
+    /// <summary>
+    /// Returns the target method to patch: MatchController.EndLocalRaid
+    /// </summary>
+    protected override MethodBase GetTargetMethod()
+    {
+        return typeof(MatchController).GetMethod(
+            "EndLocalRaid",
+            BindingFlags.Public | BindingFlags.Instance,
+            null,
+            new[] { typeof(MongoId), typeof(EndLocalRaidRequestData) },
+            null
+        )!;
+    }
+
+    /// <summary>
+    /// Prefix patch - runs BEFORE MatchController.EndLocalRaid.
+    /// Modifies inventory if player died and has a snapshot.
+    /// </summary>
+    /// <param name="sessionId">The player's session ID</param>
+    /// <param name="request">The raid end request data (modified in place)</param>
+    /// <returns>True to continue with original method, false to skip it</returns>
+    [PatchPrefix]
+    public static bool PatchPrefix(MongoId sessionId, EndLocalRaidRequestData request)
+    {
+        try
+        {
+            EnsureInitialized();
+
+            Console.WriteLine($"[KeepStartingGear] EndLocalRaid Prefix - Session: {sessionId}, Status: {request.Results.Result}");
+
+            // Only process deaths for PMC characters
+            if (request.Results.Profile.Info.Side == "Savage")
+            {
+                Console.WriteLine("[KeepStartingGear] Scav raid - skipping restoration");
+                return true; // Continue with original method
+            }
+
+            // Check if player died
+            var exitStatus = request.Results.Result;
+            bool shouldRestore = exitStatus == ExitStatus.KILLED ||
+                                 exitStatus == ExitStatus.MISSINGINACTION ||
+                                 exitStatus == ExitStatus.LEFT;
+
+            if (!shouldRestore)
+            {
+                Console.WriteLine($"[KeepStartingGear] Exit status {exitStatus} - no restoration needed");
+
+                // Clean up snapshot on successful extract
+                if (exitStatus == ExitStatus.SURVIVED || exitStatus == ExitStatus.TRANSIT)
+                {
+                    DeleteSnapshot(sessionId.ToString());
+                }
+
+                return true; // Continue with original method
+            }
+
+            // Try to restore from snapshot
+            Console.WriteLine($"[KeepStartingGear] Player died (status: {exitStatus}) - attempting restoration");
+
+            if (TryRestoreFromSnapshot(sessionId.ToString(), request))
+            {
+                Console.WriteLine("[KeepStartingGear] Inventory restored from snapshot successfully");
+
+                // Set flag so CustomInRaidHelper skips DeleteInventory
+                SnapshotRestorationState.InventoryRestoredFromSnapshot = true;
+            }
+            else
+            {
+                Console.WriteLine("[KeepStartingGear] No snapshot found or restoration failed - normal death processing");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[KeepStartingGear] Error in EndLocalRaid Prefix: {ex.Message}");
+            Console.WriteLine(ex.StackTrace ?? "");
+        }
+
+        // Always continue with original method - we just modified the data
+        return true;
+    }
+
+    /// <summary>
+    /// Attempts to restore inventory from a snapshot file.
+    /// </summary>
+    private static bool TryRestoreFromSnapshot(string sessionId, EndLocalRaidRequestData info)
+    {
+        if (string.IsNullOrEmpty(_snapshotsPath))
+        {
+            Console.WriteLine("[KeepStartingGear] Snapshots path not resolved");
+            return false;
+        }
+
+        string snapshotFile = Path.Combine(_snapshotsPath, $"{sessionId}.json");
+
+        if (!File.Exists(snapshotFile))
+        {
+            Console.WriteLine($"[KeepStartingGear] No snapshot file found at: {snapshotFile}");
+            return false;
+        }
+
+        try
+        {
+            string snapshotJson = File.ReadAllText(snapshotFile);
+            var snapshot = JsonSerializer.Deserialize<InventorySnapshot>(snapshotJson);
+
+            if (snapshot?.Items == null || snapshot.Items.Count == 0)
+            {
+                Console.WriteLine("[KeepStartingGear] Snapshot is empty or invalid");
+                return false;
+            }
+
+            Console.WriteLine($"[KeepStartingGear] Loaded snapshot with {snapshot.Items.Count} items");
+
+            // Get current inventory from raid end data
+            var currentInventory = info.Results.Profile.Inventory;
+            if (currentInventory?.Items == null)
+            {
+                Console.WriteLine("[KeepStartingGear] Current inventory is null");
+                return false;
+            }
+
+            // Find Equipment container IDs
+            string? profileEquipmentId = currentInventory.Items
+                .FirstOrDefault(i => i.Template == EquipmentContainerTpl)?.Id;
+
+            string? snapshotEquipmentId = snapshot.Items
+                .FirstOrDefault(i => i.Tpl == EquipmentContainerTpl)?.Id;
+
+            if (string.IsNullOrEmpty(profileEquipmentId))
+            {
+                Console.WriteLine("[KeepStartingGear] Could not find Equipment container in profile");
+                return false;
+            }
+
+            Console.WriteLine($"[KeepStartingGear] Equipment IDs - Profile: {profileEquipmentId}, Snapshot: {snapshotEquipmentId}");
+
+            // Track which slots had items in the snapshot
+            var snapshotSlotIds = new HashSet<string>();
+            var emptySlotIds = new HashSet<string>();
+
+            foreach (var item in snapshot.Items)
+            {
+                if (item.ParentId == snapshotEquipmentId && !string.IsNullOrEmpty(item.SlotId))
+                {
+                    snapshotSlotIds.Add(item.SlotId);
+                }
+            }
+
+            // Track empty slots from snapshot metadata
+            if (snapshot.EmptySlots != null)
+            {
+                foreach (var slotId in snapshot.EmptySlots)
+                {
+                    emptySlotIds.Add(slotId);
+                }
+            }
+
+            Console.WriteLine($"[KeepStartingGear] Snapshot slots: {string.Join(", ", snapshotSlotIds)}");
+            Console.WriteLine($"[KeepStartingGear] Empty slots to clear: {string.Join(", ", emptySlotIds)}");
+
+            // Remove equipment items (items that will be replaced by snapshot)
+            var equipmentItemIds = new HashSet<string>();
+            var preservedItemIds = new HashSet<string>();
+
+            foreach (var item in currentInventory.Items.ToList())
+            {
+                if (item.ParentId == profileEquipmentId && !string.IsNullOrEmpty(item.SlotId))
+                {
+                    string slotId = item.SlotId;
+
+                    if (snapshotSlotIds.Contains(slotId))
+                    {
+                        // Slot was in snapshot - remove current item (will be replaced)
+                        equipmentItemIds.Add(item.Id!);
+                    }
+                    else if (emptySlotIds.Contains(slotId))
+                    {
+                        // Slot was empty in snapshot - remove looted item
+                        equipmentItemIds.Add(item.Id!);
+                    }
+                    else
+                    {
+                        // Slot not in snapshot - preserve it
+                        preservedItemIds.Add(item.Id!);
+                    }
+                }
+            }
+
+            // Find all children of items to remove
+            bool foundMore = true;
+            while (foundMore)
+            {
+                foundMore = false;
+                foreach (var item in currentInventory.Items)
+                {
+                    if (equipmentItemIds.Contains(item.ParentId!) && !equipmentItemIds.Contains(item.Id!))
+                    {
+                        equipmentItemIds.Add(item.Id!);
+                        foundMore = true;
+                    }
+                    else if (preservedItemIds.Contains(item.ParentId!) && !preservedItemIds.Contains(item.Id!))
+                    {
+                        preservedItemIds.Add(item.Id!);
+                        foundMore = true;
+                    }
+                }
+            }
+
+            // Remove equipment items
+            currentInventory.Items.RemoveAll(item => equipmentItemIds.Contains(item.Id!));
+            Console.WriteLine($"[KeepStartingGear] Removed {equipmentItemIds.Count} items, {currentInventory.Items.Count} remaining");
+
+            // Add snapshot items
+            int addedCount = 0;
+            foreach (var snapshotItem in snapshot.Items)
+            {
+                // Skip equipment container - keep profile's original
+                if (snapshotItem.Tpl == EquipmentContainerTpl)
+                    continue;
+
+                var newItem = new Item
+                {
+                    Id = snapshotItem.Id,
+                    Template = snapshotItem.Tpl,
+                    ParentId = snapshotItem.ParentId == snapshotEquipmentId
+                        ? profileEquipmentId
+                        : snapshotItem.ParentId,
+                    SlotId = snapshotItem.SlotId
+                };
+
+                // Copy location data if present
+                if (snapshotItem.Location != null)
+                {
+                    newItem.Location = new ItemLocation
+                    {
+                        X = snapshotItem.Location.X,
+                        Y = snapshotItem.Location.Y,
+                        R = (ItemRotation)snapshotItem.Location.R,
+                        IsSearched = snapshotItem.Location.IsSearched
+                    };
+                }
+
+                // Copy Upd data if present
+                if (snapshotItem.Upd != null)
+                {
+                    try
+                    {
+                        var updJson = JsonSerializer.Serialize(snapshotItem.Upd);
+                        newItem.Upd = JsonSerializer.Deserialize<Upd>(updJson);
+                    }
+                    catch
+                    {
+                        // If Upd conversion fails, skip it
+                    }
+                }
+
+                currentInventory.Items.Add(newItem);
+                addedCount++;
+            }
+
+            Console.WriteLine($"[KeepStartingGear] Added {addedCount} items from snapshot");
+
+            // Delete snapshot file after successful restoration
+            try
+            {
+                File.Delete(snapshotFile);
+                Console.WriteLine($"[KeepStartingGear] Deleted snapshot file: {snapshotFile}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[KeepStartingGear] Could not delete snapshot file: {ex.Message}");
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[KeepStartingGear] Error restoring from snapshot: {ex.Message}");
+            Console.WriteLine(ex.StackTrace ?? "");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Deletes a snapshot file for a session.
+    /// </summary>
+    private static void DeleteSnapshot(string sessionId)
+    {
+        EnsureInitialized();
+        if (string.IsNullOrEmpty(_snapshotsPath)) return;
+
+        string snapshotFile = Path.Combine(_snapshotsPath, $"{sessionId}.json");
+        if (File.Exists(snapshotFile))
+        {
+            try
+            {
+                File.Delete(snapshotFile);
+                Console.WriteLine($"[KeepStartingGear] Deleted snapshot on extract: {snapshotFile}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[KeepStartingGear] Could not delete snapshot: {ex.Message}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Resolves the path to the snapshots folder based on the server mod's location.
+    /// </summary>
+    private static string ResolveSnapshotsPath()
+    {
+        try
+        {
+            // Get the directory where this DLL is located
+            string? modDllPath = typeof(EndLocalRaidPatch).Assembly.Location;
+            if (string.IsNullOrEmpty(modDllPath))
+            {
+                return "";
+            }
+
+            // Navigate up to SPT root (4 levels: dll -> mod folder -> mods -> user -> SPT)
+            string? modFolder = Path.GetDirectoryName(modDllPath);
+            string? modsFolder = Path.GetDirectoryName(modFolder);
+            string? userFolder = Path.GetDirectoryName(modsFolder);
+            string? sptFolder = Path.GetDirectoryName(userFolder);
+            string? sptRoot = Path.GetDirectoryName(sptFolder);
+
+            if (string.IsNullOrEmpty(sptRoot))
+            {
+                return "";
+            }
+
+            // Build path to BepInEx snapshots folder
+            return Path.Combine(sptRoot, "BepInEx", "plugins", "Blackhorse311-KeepStartingGear", "snapshots");
+        }
+        catch
+        {
+            return "";
+        }
+    }
+}
+
+// ============================================================================
+// Data Classes for Snapshot Deserialization
+// ============================================================================
+
+/// <summary>
+/// Represents a snapshot of the player's inventory.
+/// </summary>
+internal class InventorySnapshot
+{
+    public string? SessionId { get; set; }
+    public string? ProfileId { get; set; }
+    public DateTime Timestamp { get; set; }
+    public List<SnapshotItem> Items { get; set; } = new();
+    public List<string>? EmptySlots { get; set; }
+    public string? ModVersion { get; set; }
+}
+
+/// <summary>
+/// Represents an item in the snapshot.
+/// </summary>
+internal class SnapshotItem
+{
+    public string? Id { get; set; }
+    public string? Tpl { get; set; }
+    public string? ParentId { get; set; }
+    public string? SlotId { get; set; }
+    public SnapshotItemLocation? Location { get; set; }
+    public object? Upd { get; set; }
+}
+
+/// <summary>
+/// Represents item location within a grid.
+/// </summary>
+internal class SnapshotItemLocation
+{
+    public int X { get; set; }
+    public int Y { get; set; }
+    public int R { get; set; }
+    public bool IsSearched { get; set; }
+}

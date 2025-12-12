@@ -189,6 +189,16 @@ public class CustomInRaidHelper : InRaidHelper
 
             _logger.Info($"[KeepStartingGear-Server] Loaded snapshot with {snapshot.Items.Count} items");
 
+            // Debug: Log deserialized IncludedSlots
+            if (snapshot.IncludedSlots != null)
+            {
+                _logger.Info($"[KeepStartingGear-Server] Deserialized IncludedSlots: [{string.Join(", ", snapshot.IncludedSlots)}]");
+            }
+            else
+            {
+                _logger.Warning("[KeepStartingGear-Server] IncludedSlots is NULL after deserialization!");
+            }
+
             // Find Equipment container in profile
             string? profileEquipmentId = pmcData.Inventory.Items
                 .FirstOrDefault(i => i.Template == EquipmentContainerTpl)?.Id;
@@ -202,9 +212,25 @@ public class CustomInRaidHelper : InRaidHelper
                 return false;
             }
 
+            // Get the set of slot IDs that USER ENABLED in settings (IncludedSlots)
+            // This is the authoritative list of what slots should be managed by the mod
+            var includedSlotIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (snapshot.IncludedSlots != null && snapshot.IncludedSlots.Count > 0)
+            {
+                foreach (var slot in snapshot.IncludedSlots)
+                {
+                    includedSlotIds.Add(slot);
+                }
+                _logger.Info($"[KeepStartingGear-Server] User configured slots to manage: {string.Join(", ", includedSlotIds)}");
+            }
+            else
+            {
+                _logger.Warning("[KeepStartingGear-Server] No IncludedSlots in snapshot - this is a legacy snapshot");
+            }
+
             // Track which slots had items in snapshot
-            var snapshotSlotIds = new HashSet<string>();
-            var emptySlotIds = new HashSet<string>();
+            var snapshotSlotIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var emptySlotIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var item in snapshot.Items)
             {
@@ -222,26 +248,39 @@ public class CustomInRaidHelper : InRaidHelper
                 }
             }
 
-            // Remove equipment items that will be replaced
+            // Remove ALL equipment items (player died - all gear is lost except what's in snapshot)
             var equipmentItemIds = new HashSet<string>();
-            var preservedItemIds = new HashSet<string>();
 
             foreach (var item in pmcData.Inventory.Items.ToList())
             {
                 if (item.ParentId == profileEquipmentId && !string.IsNullOrEmpty(item.SlotId))
                 {
-                    if (snapshotSlotIds.Contains(item.SlotId) || emptySlotIds.Contains(item.SlotId))
+                    // ALL equipment items are removed on death
+                    equipmentItemIds.Add(item.Id!);
+
+                    // Determine if this slot is managed by the mod (for logging purposes)
+                    bool slotIsManaged;
+                    if (includedSlotIds.Count > 0)
                     {
-                        equipmentItemIds.Add(item.Id!);
+                        slotIsManaged = includedSlotIds.Contains(item.SlotId);
                     }
                     else
                     {
-                        preservedItemIds.Add(item.Id!);
+                        slotIsManaged = snapshotSlotIds.Contains(item.SlotId) || emptySlotIds.Contains(item.SlotId);
+                    }
+
+                    if (slotIsManaged)
+                    {
+                        _logger.Debug($"[KeepStartingGear-Server] Removing item from slot '{item.SlotId}' (will be restored from snapshot)");
+                    }
+                    else
+                    {
+                        _logger.Info($"[KeepStartingGear-Server] Removing item from slot '{item.SlotId}' (slot not protected - normal death penalty)");
                     }
                 }
             }
 
-            // Find all children of items to remove
+            // Find all children of items to remove (items inside containers)
             bool foundMore = true;
             while (foundMore)
             {
@@ -253,24 +292,48 @@ public class CustomInRaidHelper : InRaidHelper
                         equipmentItemIds.Add(item.Id!);
                         foundMore = true;
                     }
-                    else if (preservedItemIds.Contains(item.ParentId!) && !preservedItemIds.Contains(item.Id!))
-                    {
-                        preservedItemIds.Add(item.Id!);
-                        foundMore = true;
-                    }
                 }
             }
 
-            // Remove equipment items
+            // Remove all equipment items
             pmcData.Inventory.Items.RemoveAll(item => equipmentItemIds.Contains(item.Id!));
-            _logger.Info($"[KeepStartingGear-Server] Removed {equipmentItemIds.Count} items");
+            _logger.Info($"[KeepStartingGear-Server] Removed {equipmentItemIds.Count} items (all equipment lost on death)");
+
+            // CRITICAL: Build a set of all existing item IDs to prevent duplicates
+            // This fixes the "An item with the same key has already been added" crash
+            var existingItemIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var item in pmcData.Inventory.Items)
+            {
+                if (!string.IsNullOrEmpty(item.Id))
+                {
+                    existingItemIds.Add(item.Id);
+                }
+            }
+            _logger.Info($"[KeepStartingGear-Server] Existing inventory has {existingItemIds.Count} items before restoration");
 
             // Add snapshot items
             int addedCount = 0;
+            int skippedDuplicates = 0;
             foreach (var snapshotItem in snapshot.Items)
             {
                 if (snapshotItem.Tpl == EquipmentContainerTpl)
                     continue;
+
+                // Skip items with missing required data
+                if (string.IsNullOrEmpty(snapshotItem.Id) || string.IsNullOrEmpty(snapshotItem.Tpl))
+                {
+                    _logger.Warning($"[KeepStartingGear-Server] Skipping item with missing Id or Tpl");
+                    continue;
+                }
+
+                // CRITICAL: Check for duplicate item ID before adding
+                // This prevents the "An item with the same key has already been added" crash
+                if (existingItemIds.Contains(snapshotItem.Id))
+                {
+                    _logger.Warning($"[KeepStartingGear-Server] DUPLICATE PREVENTED: Item {snapshotItem.Id} (Tpl={snapshotItem.Tpl}) already exists in inventory - skipping to prevent crash");
+                    skippedDuplicates++;
+                    continue;
+                }
 
                 var newItem = new Item
                 {
@@ -282,8 +345,17 @@ public class CustomInRaidHelper : InRaidHelper
                     SlotId = snapshotItem.SlotId
                 };
 
-                if (snapshotItem.Location != null)
+                // Copy location data (grid position for container items OR integer position for cartridges)
+                if (snapshotItem.LocationIndex.HasValue)
                 {
+                    // CARTRIDGE LOCATION: Use integer position for magazine cartridges
+                    // SPT profiles expect cartridges to have integer locations (0, 1, 2, etc.)
+                    newItem.Location = snapshotItem.LocationIndex.Value;
+                    _logger.Debug($"[KeepStartingGear-Server] Restored cartridge position {snapshotItem.LocationIndex.Value} for {snapshotItem.Tpl}");
+                }
+                else if (snapshotItem.Location != null)
+                {
+                    // GRID LOCATION: Use x/y/r object for container items
                     newItem.Location = new ItemLocation
                     {
                         X = snapshotItem.Location.X,
@@ -304,10 +376,15 @@ public class CustomInRaidHelper : InRaidHelper
                 }
 
                 pmcData.Inventory.Items.Add(newItem);
+                existingItemIds.Add(newItem.Id!); // Track newly added item to prevent duplicates within snapshot
                 addedCount++;
             }
 
             _logger.Info($"[KeepStartingGear-Server] Added {addedCount} items from snapshot");
+            if (skippedDuplicates > 0)
+            {
+                _logger.Warning($"[KeepStartingGear-Server] SKIPPED {skippedDuplicates} duplicate items to prevent crash");
+            }
 
             // Delete snapshot file
             try

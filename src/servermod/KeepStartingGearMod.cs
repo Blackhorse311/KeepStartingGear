@@ -113,20 +113,32 @@ public class KeepStartingGearMod(ISptLogger<KeepStartingGearMod> logger) : IOnLo
             // Navigate to user/mods directory
             string modsDirectory = System.IO.Path.GetFullPath(System.IO.Path.Combine(modDirectory, ".."));
 
+            if (!System.IO.Directory.Exists(modsDirectory))
+                return;
+
             // Check for SVM (Server Value Modifier)
-            string[] svmFolderPatterns = { "SVM", "ServerValueModifier", "svm", "servervaluemodifier" };
-            foreach (var pattern in svmFolderPatterns)
+            // The default folder name is "[SVM] Server Value Modifier" but users may rename it
+            // We check all directories for any that contain "SVM" (case-insensitive)
+            string[] svmKeywords = { "svm", "servervaluemodifier", "server value modifier" };
+
+            foreach (var directory in System.IO.Directory.GetDirectories(modsDirectory))
             {
-                string potentialPath = System.IO.Path.Combine(modsDirectory, pattern);
-                if (System.IO.Directory.Exists(potentialPath))
+                string folderName = System.IO.Path.GetFileName(directory).ToLowerInvariant();
+
+                foreach (var keyword in svmKeywords)
                 {
-                    logger.Info("[KeepStartingGear-Server] SVM (Server Value Modifier) detected.");
-                    logger.Info("[KeepStartingGear-Server] Using Harmony patching for SVM compatibility.");
-                    logger.Info("[KeepStartingGear-Server] Note: If SVM's 'Save Gear After Death' is enabled,");
-                    logger.Info("[KeepStartingGear-Server]       it may override KeepStartingGear's selective restoration.");
-                    return;
+                    if (folderName.Contains(keyword))
+                    {
+                        logger.Info($"[KeepStartingGear-Server] SVM (Server Value Modifier) detected: {System.IO.Path.GetFileName(directory)}");
+                        logger.Info("[KeepStartingGear-Server] Using Harmony patching for SVM compatibility.");
+                        logger.Info("[KeepStartingGear-Server] Note: If SVM's 'Save Gear After Death' is enabled,");
+                        logger.Info("[KeepStartingGear-Server]       it may override KeepStartingGear's selective restoration.");
+                        return;
+                    }
                 }
             }
+
+            logger.Info("[KeepStartingGear-Server] SVM not detected - using standard restoration flow.");
         }
         catch (Exception ex)
         {

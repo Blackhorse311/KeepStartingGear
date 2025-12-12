@@ -396,7 +396,8 @@ public static class Settings
             true,
             new ConfigDescription(
                 "Master switch to enable or disable the Keep Starting Gear mod.\n" +
-                "When disabled, no snapshots will be taken or restored.",
+                "When disabled, no snapshots will be taken or restored.\n" +
+                "Changes take effect at the start of your next raid.",
                 null,
                 new ConfigurationManagerAttributes { Order = order-- }
             )

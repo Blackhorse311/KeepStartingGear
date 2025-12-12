@@ -97,9 +97,24 @@ public class SerializedItem
     /// <summary>
     /// Grid position for items inside containers.
     /// Only populated for items in grid containers (backpacks, rigs, pockets).
+    /// For magazine cartridges, this will be null and LocationIndex is used instead.
     /// </summary>
     [JsonProperty("location")]
     public ItemLocation Location { get; set; }
+
+    /// <summary>
+    /// Numeric position index for cartridges in magazines.
+    /// In SPT profiles, cartridges use a simple integer location (0, 1, 2, etc.)
+    /// instead of the grid-style location object used by container items.
+    /// </summary>
+    /// <remarks>
+    /// This is stored separately from Location because:
+    /// - Grid items use Location (object with x, y, r)
+    /// - Magazine cartridges use LocationIndex (simple integer)
+    /// Both serialize to "location" in JSON but with different value types.
+    /// </remarks>
+    [JsonIgnore]
+    public int? LocationIndex { get; set; }
 
     /// <summary>
     /// Update/state data for the item (stack count, durability, etc.).
@@ -163,6 +178,10 @@ public class ItemLocation
 ///   <item>StackObjectsCount: Only for stackable items (ammo, money, meds)</item>
 ///   <item>SpawnedInSession: True if item was found during current raid</item>
 ///   <item>Foldable: Only for weapons with folding stocks</item>
+///   <item>MedKit: Medical item durability/HP remaining</item>
+///   <item>Repairable: Armor and weapon durability</item>
+///   <item>Resource: Consumable resource (fuel, etc.)</item>
+///   <item>FoodDrink: Food and drink resource</item>
 ///   <item>Tag: Only for items with custom names/colors</item>
 /// </list>
 /// </remarks>
@@ -191,11 +210,91 @@ public class ItemUpd
     public UpdFoldable Foldable { get; set; }
 
     /// <summary>
+    /// Medical item durability (HP remaining).
+    /// Used for IFAK, AFAK, Grizzly, etc.
+    /// </summary>
+    [JsonProperty("MedKit")]
+    public UpdMedKit MedKit { get; set; }
+
+    /// <summary>
+    /// Durability for repairable items (armor, weapons).
+    /// Contains current and max durability values.
+    /// </summary>
+    [JsonProperty("Repairable")]
+    public UpdRepairable Repairable { get; set; }
+
+    /// <summary>
+    /// Resource value for consumable items (fuel cans, etc.).
+    /// </summary>
+    [JsonProperty("Resource")]
+    public UpdResource Resource { get; set; }
+
+    /// <summary>
+    /// Food and drink resource value.
+    /// </summary>
+    [JsonProperty("FoodDrink")]
+    public UpdFoodDrink FoodDrink { get; set; }
+
+    /// <summary>
     /// Custom tag/name applied to this item by the player.
     /// Used for organization and identification.
     /// </summary>
     [JsonProperty("Tag")]
     public Tag Tag { get; set; }
+}
+
+/// <summary>
+/// Medical kit durability/HP remaining.
+/// </summary>
+public class UpdMedKit
+{
+    /// <summary>
+    /// Current HP value of the medical item.
+    /// </summary>
+    [JsonProperty("HpResource")]
+    public double HpResource { get; set; }
+}
+
+/// <summary>
+/// Durability for repairable items (armor, weapons).
+/// </summary>
+public class UpdRepairable
+{
+    /// <summary>
+    /// Current durability value.
+    /// </summary>
+    [JsonProperty("Durability")]
+    public double Durability { get; set; }
+
+    /// <summary>
+    /// Maximum durability value.
+    /// </summary>
+    [JsonProperty("MaxDurability")]
+    public double MaxDurability { get; set; }
+}
+
+/// <summary>
+/// Resource value for consumable items.
+/// </summary>
+public class UpdResource
+{
+    /// <summary>
+    /// Current resource value.
+    /// </summary>
+    [JsonProperty("Value")]
+    public double Value { get; set; }
+}
+
+/// <summary>
+/// Food and drink resource value.
+/// </summary>
+public class UpdFoodDrink
+{
+    /// <summary>
+    /// Current HP/resource value of the food or drink.
+    /// </summary>
+    [JsonProperty("HpPercent")]
+    public double HpPercent { get; set; }
 }
 
 /// <summary>

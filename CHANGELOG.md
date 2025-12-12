@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2025-12-11
+
+### Fixed
+
+- **MedKit Durability Not Preserved**: Fixed critical issue where medical items (IFAK, AFAK, Grizzly, etc.) were restored with full HP instead of their snapshot HP. The mod now correctly accesses the `HpResource` field on EFT's `MedKitComponent`. (Reported by @immortal_wombat)
+
+- **Armor Durability Not Preserved**: Fixed issue where armor and weapons were restored with full durability instead of their snapshot durability. The mod now correctly accesses `Durability` and `MaxDurability` fields on EFT's `RepairableComponent`. (Reported by @immortal_wombat)
+
+- **Armor Plates Lost in Backpack**: Fixed critical issue where armor stored in backpacks/containers lost their plates and soft armor inserts on restoration. The snapshot capture now properly handles nested slots within grid items (e.g., armor plates inside armor that's inside a backpack). (Reported by @immortal_wombat)
+
+- **Slot Exclusion Not Working**: Fixed issue where items in non-protected slots were being preserved instead of lost on death. The mod now correctly applies the death penalty to unprotected slots while only restoring items from protected slots.
+
+### Technical
+
+- **Reflection Fix**: EFT stores durability values as fields, not properties. Changed from `GetProperty()` to `GetField()` for accessing `HpResource`, `Durability`, and `MaxDurability` on item components.
+
+- **Grid Item Slot Capture**: Added recursive slot capture for items found in grid containers. When armor is captured from a backpack grid, its AllSlots are now enumerated to capture plates and soft armor inserts.
+
+### Compatibility
+
+- SPT 4.0.x (tested on 4.0.7)
+- **SVM**: Partially compatible - disable Softcore Mode and Safe Exit when using KSG
+
+---
+
 ## [1.3.0] - 2025-12-06
 
 ### Added

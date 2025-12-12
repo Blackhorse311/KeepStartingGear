@@ -93,9 +93,24 @@ public class RaidEndPatch : ModulePatch
     // ========================================================================
 
     /// <summary>
+    /// Tracks whether we've already processed the raid end for this session.
+    /// Prevents duplicate processing from bot extractions triggering false positives.
+    /// </summary>
+    private static bool _raidEndProcessed = false;
+
+    /// <summary>
+    /// Resets the raid end tracking flag. Called when a new raid starts.
+    /// </summary>
+    public static void ResetRaidEndFlag()
+    {
+        _raidEndProcessed = false;
+    }
+
+    /// <summary>
     /// Prefix method - runs BEFORE the raid end processing.
     /// Handles notifications and snapshot cleanup based on exit status.
     /// </summary>
+    /// <param name="__instance">The game instance (used to verify main player)</param>
     /// <param name="exitStatus">Why the raid ended (Killed, Survived, etc.)</param>
     /// <param name="exitName">The name of the exit point used</param>
     /// <remarks>
@@ -111,35 +126,101 @@ public class RaidEndPatch : ModulePatch
     /// The server-side component handles actual inventory restoration.
     /// This client-side code only handles UI feedback and cleanup.
     /// </para>
-    /// <para>
-    /// Note: We don't use the __instance parameter to avoid accessibility issues
-    /// with the BaseLocalGame class in different SPT versions.
-    /// </para>
     /// </remarks>
     [PatchPrefix]
-    private static void PatchPrefix(ExitStatus exitStatus, string exitName)
+    private static void PatchPrefix(object __instance, ExitStatus exitStatus, string exitName)
     {
         try
         {
+            // ================================================================
+            // BOT EXTRACTION FILTER
+            // ================================================================
+            // The Stop() method can be called for bot extractions as well as player extractions.
+            // We need to verify this is actually the main player's raid ending.
+            //
+            // We use multiple checks:
+            // 1. Check if we've already processed raid end (prevents duplicate notifications)
+            // 2. Verify the GameWorld.MainPlayer is actually ending (not a bot)
+            // 3. Check player health state to confirm they're actually dead/extracted
+            // 4. Check if this is a Scav raid (Scav raids don't use snapshots)
+
+            // Check 0: Is the mod enabled?
+            if (!Configuration.Settings.ModEnabled.Value)
+            {
+                Plugin.Log.LogDebug("RaidEndPatch: Mod is disabled in settings - skipping");
+                return;
+            }
+
+            // Check 1: Already processed this raid end?
+            if (_raidEndProcessed)
+            {
+                Plugin.Log.LogDebug($"RaidEndPatch: Ignoring duplicate Stop() call (exitStatus={exitStatus}, exitName={exitName})");
+                return;
+            }
+
+            // Check 2: Verify this is actually the main player's game ending
+            // Get GameWorld to check if main player is actually ending
+            var gameWorld = Singleton<GameWorld>.Instance;
+            if (gameWorld == null)
+            {
+                Plugin.Log.LogDebug("RaidEndPatch: GameWorld is null - likely bot extraction, ignoring");
+                return;
+            }
+
+            var mainPlayer = gameWorld.MainPlayer;
+            if (mainPlayer == null)
+            {
+                Plugin.Log.LogDebug("RaidEndPatch: MainPlayer is null - likely bot extraction, ignoring");
+                return;
+            }
+
+            // Check 3: Is this a Scav raid? (Scav raids don't use gear protection)
+            // EPlayerSide.Savage = Scav, EPlayerSide.Usec/Bear = PMC
+            if (mainPlayer.Side == EPlayerSide.Savage)
+            {
+                Plugin.Log.LogDebug("RaidEndPatch: Scav raid detected - KSG does not apply to Scav runs");
+                return;
+            }
+
+            // Check 4: For death events, verify the main player is actually dead
+            // For extraction events, verify the main player's health state
+            bool playerDied = exitStatus == ExitStatus.Killed ||
+                             exitStatus == ExitStatus.MissingInAction ||
+                             exitStatus == ExitStatus.Left;
+
+            bool playerExtracted = exitStatus == ExitStatus.Survived ||
+                                  exitStatus == ExitStatus.Runner;
+
+            if (playerDied)
+            {
+                // Verify the main player is actually dead or about to die
+                var healthController = mainPlayer.HealthController;
+                if (healthController != null && healthController.IsAlive)
+                {
+                    Plugin.Log.LogDebug($"RaidEndPatch: Main player is still alive - this is likely a bot death, ignoring");
+                    return;
+                }
+            }
+            else if (playerExtracted)
+            {
+                // For extraction, verify main player is alive (dead players don't extract)
+                var healthController = mainPlayer.HealthController;
+                if (healthController != null && !healthController.IsAlive)
+                {
+                    Plugin.Log.LogDebug($"RaidEndPatch: Main player is dead but exit status is {exitStatus} - likely bot extraction, ignoring");
+                    return;
+                }
+            }
+
+            // Mark that we've processed the raid end to prevent duplicate notifications
+            _raidEndProcessed = true;
+
             Plugin.Log.LogInfo($"Raid ending - Exit status: {exitStatus}, Exit name: {exitName}");
             Plugin.Log.LogDebug($"Exit status enum value: {(int)exitStatus}");
 
             // Reset the snapshot limit tracking for the next raid
             // This allows a new snapshot to be taken in the next raid
             KeybindMonitor.ResetRaidState();
-
-            // ================================================================
-            // Determine Exit Type
-            // ================================================================
-
-            // Player died or failed to extract
-            bool playerDied = exitStatus == ExitStatus.Killed ||
-                             exitStatus == ExitStatus.MissingInAction ||
-                             exitStatus == ExitStatus.Left;
-
-            // Player extracted successfully
-            bool playerExtracted = exitStatus == ExitStatus.Survived ||
-                                  exitStatus == ExitStatus.Runner;
 
             // ================================================================
             // Handle Death (Server Does Restoration)

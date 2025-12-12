@@ -742,6 +742,8 @@ public class InventoryService
                                     if (ammoItems != null)
                                     {
                                         int ammoCount = 0;
+                                        int cartridgePosition = 0; // Track position for LocationIndex
+
                                         foreach (var ammo in ammoItems)
                                         {
                                             ammoCount++;
@@ -750,21 +752,73 @@ public class InventoryService
                                                 var serializedItem = ConvertToSerializedItem(ammo);
                                                 if (serializedItem != null)
                                                 {
+                                                    // CRITICAL: Set LocationIndex for magazine cartridges
+                                                    // SPT profiles use integer locations for cartridges (0, 1, 2, etc.)
+                                                    // This fixes the "expects an item at position X" error
+                                                    serializedItem.LocationIndex = cartridgePosition;
+
                                                     allItems.Add(serializedItem);
                                                     capturedItemIds.Add(ammo.Id);
                                                     gridItemsFound++;
                                                     foundMore = true;
 
-                                                    Plugin.Log.LogInfo($"[CARTRIDGES] Captured ammo from {itemType.Name}: {serializedItem.Tpl} (ID: {serializedItem.Id}, Parent: {containerItem.Id}, Stack: {ammo.StackObjectsCount})");
+                                                    Plugin.Log.LogInfo($"[CARTRIDGES] Captured ammo from {itemType.Name}: {serializedItem.Tpl} (ID: {serializedItem.Id}, Parent: {containerItem.Id}, Stack: {ammo.StackObjectsCount}, Position: {cartridgePosition})");
                                                 }
                                             }
+                                            cartridgePosition++;
                                         }
-                                        Plugin.Log.LogInfo($"[CARTRIDGES] {itemType.Name} contained {ammoCount} ammo items");
+                                        Plugin.Log.LogInfo($"[CARTRIDGES] {itemType.Name} contained {ammoCount} ammo items with positions 0-{cartridgePosition - 1}");
                                     }
                                 }
                                 else
                                 {
                                     Plugin.Log.LogWarning($"[CARTRIDGES] No Items property on Cartridges. Available: {string.Join(", ", cartridges.GetType().GetProperties().Select(p => p.Name).Take(10))}");
+                                }
+                            }
+                        }
+                    }
+
+                    // Also check for SLOTS on grid items (e.g., armor plates in armor stored in backpack)
+                    foreach (var gridItem in newItemsToCheck.ToList())
+                    {
+                        if (gridItem == null) continue;
+                        var gridItemType2 = gridItem.GetType();
+
+                        // Check for AllSlots property (armor, weapons, etc. have slots)
+                        var gridItemSlotsProperty = gridItemType2.GetProperty("AllSlots");
+                        if (gridItemSlotsProperty != null)
+                        {
+                            var gridItemSlots = gridItemSlotsProperty.GetValue(gridItem) as System.Collections.IEnumerable;
+                            if (gridItemSlots != null)
+                            {
+                                foreach (var gridSlot in gridItemSlots)
+                                {
+                                    if (gridSlot == null) continue;
+
+                                    // Get ContainedItem from slot
+                                    var containedItemProp2 = gridSlot.GetType().GetProperty("ContainedItem");
+                                    if (containedItemProp2 != null)
+                                    {
+                                        var slotItem = containedItemProp2.GetValue(gridSlot) as Item;
+                                        if (slotItem != null && !capturedItemIds.Contains(slotItem.Id))
+                                        {
+                                            // Get slot ID for logging
+                                            var slotIdProp2 = gridSlot.GetType().GetProperty("ID");
+                                            var slotId2 = slotIdProp2?.GetValue(gridSlot)?.ToString() ?? "unknown";
+
+                                            var serializedSlotItem = ConvertToSerializedItem(slotItem);
+                                            if (serializedSlotItem != null)
+                                            {
+                                                allItems.Add(serializedSlotItem);
+                                                capturedItemIds.Add(slotItem.Id);
+                                                newItemsToCheck.Add(slotItem);
+                                                gridItemsFound++;
+                                                foundMore = true;
+
+                                                Plugin.Log.LogInfo($"[CAPTURE] Added slot item from grid item: {serializedSlotItem.Tpl} (Slot: {slotId2}, Parent: {gridItem.Id})");
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1355,6 +1409,155 @@ public class InventoryService
                 // Foldable capture failed - not critical
             }
 
+            // ================================================================
+            // Capture MedKit HP (IFAK, AFAK, Grizzly, etc.)
+            // EFT stores current HP as a field on MedKitComponent (not a property)
+            // ================================================================
+            try
+            {
+                var itemType = item.GetType();
+
+                // Check if this is a MedKit item class
+                if (itemType.Name.Contains("MedKit"))
+                {
+                    // Access the Components field to find MedKitComponent
+                    var componentsField = itemType.GetField("Components", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                    if (componentsField != null)
+                    {
+                        var components = componentsField.GetValue(item) as System.Collections.IEnumerable;
+                        if (components != null)
+                        {
+                            foreach (var comp in components)
+                            {
+                                if (comp != null && comp.GetType().Name.Contains("MedKit"))
+                                {
+                                    // HpResource is a FIELD on the component, not a property
+                                    var hpField = comp.GetType().GetField("HpResource", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                                    if (hpField != null)
+                                    {
+                                        var hp = hpField.GetValue(comp);
+                                        if (hp != null)
+                                        {
+                                            upd.MedKit = new UpdMedKit { HpResource = Convert.ToDouble(hp) };
+                                            Plugin.Log.LogDebug($"Captured MedKit HP: {hp} for {item.TemplateId}");
+                                        }
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogWarning($"MedKit capture failed for {item.TemplateId}: {ex.Message}");
+            }
+
+            // ================================================================
+            // Capture Repairable durability (armor, weapons)
+            // EFT stores Durability and MaxDurability as fields on RepairableComponent
+            // ================================================================
+            try
+            {
+                var itemType = item.GetType();
+
+                // Access Components field to find RepairableComponent
+                var componentsField = itemType.GetField("Components", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                if (componentsField != null)
+                {
+                    var components = componentsField.GetValue(item) as System.Collections.IEnumerable;
+                    if (components != null)
+                    {
+                        foreach (var comp in components)
+                        {
+                            if (comp != null && comp.GetType().Name.Contains("Repairable"))
+                            {
+                                // Durability and MaxDurability are FIELDS on the component, not properties
+                                var durField = comp.GetType().GetField("Durability", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                                var maxDurField = comp.GetType().GetField("MaxDurability", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+
+                                if (durField != null)
+                                {
+                                    var dur = durField.GetValue(comp);
+                                    var maxDur = maxDurField?.GetValue(comp);
+                                    if (dur != null)
+                                    {
+                                        upd.Repairable = new UpdRepairable
+                                        {
+                                            Durability = Convert.ToDouble(dur),
+                                            MaxDurability = maxDur != null ? Convert.ToDouble(maxDur) : 100
+                                        };
+                                        Plugin.Log.LogDebug($"Captured durability: {dur}/{maxDur} for {item.TemplateId}");
+                                    }
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogWarning($"Durability capture failed for {item.TemplateId}: {ex.Message}");
+            }
+
+            // ================================================================
+            // Capture Resource value (fuel cans, etc.)
+            // ================================================================
+            try
+            {
+                var itemType = item.GetType();
+                var resourceProp = itemType.GetProperty("ResourceComponent") ??
+                                   itemType.GetProperty("Resource");
+                if (resourceProp != null)
+                {
+                    var resourceValue = resourceProp.GetValue(item);
+                    if (resourceValue != null)
+                    {
+                        var valueProp = resourceValue.GetType().GetProperty("Value");
+                        if (valueProp != null)
+                        {
+                            var val = valueProp.GetValue(resourceValue);
+                            if (val != null)
+                            {
+                                upd.Resource = new UpdResource { Value = Convert.ToDouble(val) };
+                                Plugin.Log.LogInfo($"[RESOURCE] Captured Value={val} for {item.TemplateId}");
+                            }
+                        }
+                    }
+                }
+            }
+            catch { /* Resource capture failed - not critical */ }
+
+            // ================================================================
+            // Capture FoodDrink value
+            // ================================================================
+            try
+            {
+                var itemType = item.GetType();
+                var foodDrinkProp = itemType.GetProperty("FoodDrinkComponent") ??
+                                    itemType.GetProperty("FoodDrink");
+                if (foodDrinkProp != null)
+                {
+                    var foodDrinkValue = foodDrinkProp.GetValue(item);
+                    if (foodDrinkValue != null)
+                    {
+                        var hpProp = foodDrinkValue.GetType().GetProperty("HpPercent");
+                        if (hpProp != null)
+                        {
+                            var hp = hpProp.GetValue(foodDrinkValue);
+                            if (hp != null)
+                            {
+                                upd.FoodDrink = new UpdFoodDrink { HpPercent = Convert.ToDouble(hp) };
+                                Plugin.Log.LogInfo($"[FOODDRINK] Captured HpPercent={hp} for {item.TemplateId}");
+                            }
+                        }
+                    }
+                }
+            }
+            catch { /* FoodDrink capture failed - not critical */ }
+
             serialized.Upd = upd;
 
             if (Settings.EnableDebugMode.Value)
@@ -1820,6 +2023,27 @@ public class InventoryService
         catch (Exception ex)
         {
             Plugin.Log.LogDebug($"Could not set SpawnedInSession: {ex.Message}");
+        }
+    }
+
+    // ========================================================================
+    // Reflection Helpers
+    // ========================================================================
+
+    /// <summary>
+    /// Safely tries to get a property value for logging purposes.
+    /// Returns "error" if the property cannot be read.
+    /// </summary>
+    private string TryGetValue(PropertyInfo prop, object obj)
+    {
+        try
+        {
+            var val = prop.GetValue(obj);
+            return val?.ToString() ?? "null";
+        }
+        catch
+        {
+            return "error";
         }
     }
 
