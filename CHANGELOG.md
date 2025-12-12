@@ -23,6 +23,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Grid Item Slot Capture**: Added recursive slot capture for items found in grid containers. When armor is captured from a backpack grid, its AllSlots are now enumerated to capture plates and soft armor inserts.
 
+### Contributors
+
+Special thanks to our community bug hunters who helped improve this release:
+- **@immortal_wombat** - Reported durability issues for medkits and armor, and armor plates being lost in backpacks
+- **@NomenIgnatum** - Reported medkit HP restoration issue
+- **@trollcze** - Reported "An item with the same key" crash on death
+- **@andryi2509** - Extensive testing, reported surgical kit errors, SVM detection issues, and helped debug multiple problems
+- **@Television Hater** - Reported duplicate item crash
+- **@benadryldealer** - Reported duplicate item crash
+- **@20fpsguy** - Reported scav raid snapshot saving and false extraction detection
+- **@cykablyat** - Reported duplicate item crash and profile corruption
+- **@Buszman** - Reported magazine ammo disappearing issue
+
 ### Compatibility
 
 - SPT 4.0.x (tested on 4.0.7)
