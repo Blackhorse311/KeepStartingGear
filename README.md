@@ -1,6 +1,6 @@
 # Keep Starting Gear
 
-**Version:** 1.4.1
+**Version:** 1.4.2
 **Author:** Blackhorse311
 **License:** MIT
 **SPT Compatibility:** 4.0.x (tested on 4.0.8)

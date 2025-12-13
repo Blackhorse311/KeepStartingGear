@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.2] - 2025-12-13
+
+### Fixed
+
+- **GUID Mismatch**: Fixed server mod GUID (`blackhorse311.keepstartinggear`) to match client plugin GUID (`com.blackhorse311.keepstartinggear`). This resolves warnings in CheckMods and other mod compatibility tools.
+
+### Compatibility
+
+- SPT 4.0.x (tested on 4.0.8)
+
+---
+
 ## [1.4.1] - 2025-12-13
 
 ### Fixed

@@ -55,7 +55,7 @@ public record ModMetadata : AbstractModMetadata
     /// Unique identifier for this mod.
     /// Must be lowercase and use dot notation (author.modname).
     /// </summary>
-    public override string ModGuid { get; init; } = "blackhorse311.keepstartinggear";
+    public override string ModGuid { get; init; } = "com.blackhorse311.keepstartinggear";
 
     /// <summary>
     /// Human-readable name displayed in server console and mod lists.
@@ -77,7 +77,7 @@ public record ModMetadata : AbstractModMetadata
     /// Current version of the mod using Semantic Versioning.
     /// Format: MAJOR.MINOR.PATCH
     /// </summary>
-    public override SemanticVersioning.Version Version { get; init; } = new("1.4.1");
+    public override SemanticVersioning.Version Version { get; init; } = new("1.4.2");
 
     /// <summary>
     /// Range of compatible SPT server versions.
