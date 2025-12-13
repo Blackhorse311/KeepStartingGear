@@ -72,7 +72,7 @@ public static class PatchManager
     /// </remarks>
     public static void EnablePatches()
     {
-        Plugin.Log.LogInfo("Enabling patches...");
+        Plugin.Log.LogDebug("Enabling patches...");
 
         int patchCount = 0;
 
@@ -97,7 +97,7 @@ public static class PatchManager
             }
         }
 
-        Plugin.Log.LogInfo($"Enabled {patchCount} patches");
+        Plugin.Log.LogDebug($"Enabled {patchCount} patches");
     }
 
     // ========================================================================

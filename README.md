@@ -1,9 +1,9 @@
 # Keep Starting Gear
 
-**Version:** 1.3.0
+**Version:** 1.4.1
 **Author:** Blackhorse311
 **License:** MIT
-**SPT Compatibility:** 4.0.x (tested on 4.0.7)
+**SPT Compatibility:** 4.0.x (tested on 4.0.8)
 
 A mod for SPT that automatically protects your starting gear. Die in raid? Your equipment is restored. No more gear fear!
 
@@ -37,7 +37,7 @@ Choose how you want snapshots to work:
 
 ## Requirements
 
-- SPT 4.0.x (tested on 4.0.7)
+- SPT 4.0.x (tested on 4.0.8)
 - BepInEx 5.x (included with SPT)
 
 ---
@@ -51,21 +51,21 @@ Install via The Forge mod manager.
 ### Manual Installation
 
 1. Download the latest release
-2. Extract the contents to your SPT installation folder
+2. Extract the archive directly into your SPT root folder (where SPT.Server.exe is located)
 3. The folder structure should look like:
 
 ```
-SPT/
+[SPT Root]/
 ├── BepInEx/
 │   └── plugins/
 │       └── Blackhorse311-KeepStartingGear/
 │           ├── Blackhorse311.KeepStartingGear.dll
-│           └── snapshots/
-└── SPT/
-    └── user/
-        └── mods/
-            └── Blackhorse311-KeepStartingGear/
-                └── Blackhorse311.KeepStartingGear.Server.dll
+│           └── snapshots/  (created automatically)
+├── user/
+│   └── mods/
+│       └── Blackhorse311-KeepStartingGear/
+│           └── Blackhorse311.KeepStartingGear.Server.dll
+└── SPT.Server.exe
 ```
 
 ---
@@ -179,7 +179,7 @@ Settings are locked when a raid starts. Changing snapshot mode mid-raid shows a 
 
 ## Compatibility
 
-- **SPT Version**: 4.0.x (tested on 4.0.7)
+- **SPT Version**: 4.0.x (tested on 4.0.8)
 - **Fika**: Not tested - may not work in multiplayer scenarios
 - **Other Mods**: Should be compatible with most mods, including mods that add custom items
 
@@ -259,5 +259,15 @@ See [CHANGELOG.md](CHANGELOG.md) for version history.
 ## Support
 
 If you encounter bugs or have suggestions:
-- Report issues on GitHub
-- Check the SPT Discord for community support
+
+### Bug Reports
+Please use our [GitHub Issue Tracker](https://github.com/Blackhorse311/KeepStartingGear/issues) with the bug report template. You'll be asked to provide:
+- Your SPT and mod versions
+- Steps to reproduce the issue
+- **Client log**: `BepInEx/LogOutput.log`
+- **Server log**: `SPT/user/logs/` (most recent file)
+- **Snapshot file** (if applicable): `BepInEx/plugins/Blackhorse311-KeepStartingGear/snapshots/`
+
+### Community Support
+- [The Forge Mod Page](https://forge.sp-tarkov.com/mod/2470/keep-starting-gear) - Leave comments and feedback
+- [SPT Discord](https://discord.gg/spt) - Community help and discussion

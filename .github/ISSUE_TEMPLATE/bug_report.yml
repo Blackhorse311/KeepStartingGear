@@ -1,0 +1,124 @@
+name: Bug Report
+description: Report a bug or issue with Keep Starting Gear
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please fill out the form below to help us diagnose the issue.
+
+  - type: input
+    id: spt-version
+    attributes:
+      label: SPT Version
+      description: What version of SPT are you running?
+      placeholder: "e.g., 4.0.8"
+    validations:
+      required: true
+
+  - type: input
+    id: mod-version
+    attributes:
+      label: Keep Starting Gear Version
+      description: What version of the mod are you using?
+      placeholder: "e.g., 1.4.1"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: snapshot-mode
+    attributes:
+      label: Snapshot Mode
+      description: What snapshot mode were you using?
+      options:
+        - Auto Only (default)
+        - Auto + Manual
+        - Manual Only
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: What happened? What did you expect to happen?
+      placeholder: "Describe the bug..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: How can we reproduce this issue?
+      placeholder: |
+        1. Start a raid on [map]
+        2. Take snapshot with [keybind/auto]
+        3. Die to [cause]
+        4. See error...
+    validations:
+      required: true
+
+  - type: textarea
+    id: other-mods
+    attributes:
+      label: Other Mods Installed
+      description: List any other mods you have installed (especially SVM, Fika, or gear-related mods)
+      placeholder: |
+        - SVM (with Softcore Mode disabled)
+        - SAIN
+        - etc.
+    validations:
+      required: false
+
+  - type: textarea
+    id: client-log
+    attributes:
+      label: Client Log (BepInEx)
+      description: |
+        Upload or paste the relevant portion of your BepInEx log.
+        Location: `BepInEx/LogOutput.log`
+
+        **Tip:** Search for "KeepStartingGear" or "Blackhorse311" to find relevant lines.
+      placeholder: "Paste log contents here or drag & drop the file..."
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: server-log
+    attributes:
+      label: Server Log
+      description: |
+        Upload or paste the relevant portion of your SPT server log.
+        Location: `SPT/user/logs/` (most recent file)
+
+        **Tip:** Search for "KeepStartingGear" to find relevant lines.
+      placeholder: "Paste log contents here or drag & drop the file..."
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: snapshot-file
+    attributes:
+      label: Snapshot File (if applicable)
+      description: |
+        If the issue is with restoration, please attach your snapshot JSON file.
+        Location: `BepInEx/plugins/Blackhorse311-KeepStartingGear/snapshots/`
+      placeholder: "Drag & drop your snapshot .json file here..."
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission Checklist
+      options:
+        - label: I have searched existing issues to make sure this isn't a duplicate
+          required: true
+        - label: I am using the latest version of Keep Starting Gear
+          required: true
+        - label: I have disabled SVM's Softcore Mode and Safe Exit (if using SVM)
+          required: false

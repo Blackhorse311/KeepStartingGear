@@ -83,12 +83,12 @@ public class Plugin : BaseUnityPlugin
     /// <summary>
     /// Semantic version (MAJOR.MINOR.PATCH) - must match server mod version
     /// </summary>
-    public const string PluginVersion = "1.4.0";
+    public const string PluginVersion = "1.4.1";
 
     /// <summary>
     /// SPT/EFT build version this mod was tested against
     /// </summary>
-    public const int TarkovVersion = 40087;
+    public const int TarkovVersion = 40088;
 
     // ========================================================================
     // Static Accessors
@@ -135,41 +135,27 @@ public class Plugin : BaseUnityPlugin
             // This ensures the mod persists across hideout/raid transitions
             DontDestroyOnLoad(this);
 
-            Logger.LogInfo($"Keep Starting Gear v{PluginVersion} loading...");
-
             // Initialize the BepInEx configuration system
             // This creates config entries that appear in the F12 Configuration Manager
             Settings.Init(Config);
-            Logger.LogInfo("Configuration initialized");
 
             // Check if the mod is enabled in configuration
             // Allows users to disable the mod without uninstalling it
             if (!Settings.ModEnabled.Value)
             {
-                Logger.LogWarning("Mod is disabled in configuration. Not loading patches.");
+                Logger.LogInfo("Keep Starting Gear is disabled in configuration");
                 return;
             }
 
             // Initialize services in dependency order
-            // SnapshotManager: Handles saving/loading snapshot JSON files
             new Services.SnapshotManager();
-            Logger.LogInfo("SnapshotManager initialized");
-
-            // InventoryService: Captures player inventory into snapshot format
             new Services.InventoryService();
-            Logger.LogInfo("InventoryService initialized");
-
-            // ProfileService: Handles profile JSON manipulation (legacy, kept for compatibility)
             new Services.ProfileService();
-            Logger.LogInfo("ProfileService initialized");
 
             // Enable Harmony patches to hook into game events
-            // This sets up the raid start/end detection and keybind monitoring
             PatchManager.EnablePatches();
-            Logger.LogInfo("Patches enabled");
 
-            Logger.LogInfo($"Keep Starting Gear v{PluginVersion} loaded successfully!");
-            Logger.LogInfo("Ready to save and restore inventory snapshots");
+            Logger.LogInfo($"Keep Starting Gear v{PluginVersion} loaded");
         }
         catch (Exception ex)
         {

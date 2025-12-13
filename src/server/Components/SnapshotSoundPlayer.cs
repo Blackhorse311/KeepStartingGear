@@ -138,7 +138,7 @@ public static class SnapshotSoundPlayer
                     if (Enum.IsDefined(_soundEnumType, targetSound))
                     {
                         _skillSoundValue = Enum.Parse(_soundEnumType, targetSound);
-                        Plugin.Log.LogInfo($"Snapshot sound initialized: {targetSound}");
+                        Plugin.Log.LogDebug($"Snapshot sound initialized: {targetSound}");
                     }
                     else
                     {

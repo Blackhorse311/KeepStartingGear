@@ -601,7 +601,7 @@ public static class Settings
             )
         );
 
-        Plugin.Log.LogInfo("Settings initialized with BepInEx ConfigFile");
+        Plugin.Log.LogDebug("Settings initialized");
     }
 
     // ========================================================================
@@ -680,7 +680,7 @@ public static class Settings
         if (preset == ConfigPreset.Custom) return;
 
         ApplyPreset(preset);
-        Plugin.Log.LogInfo($"Applied {preset} preset");
+        Plugin.Log.LogDebug($"Applied {preset} preset");
     }
 
     /// <summary>

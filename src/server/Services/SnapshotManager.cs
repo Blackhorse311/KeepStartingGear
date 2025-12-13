@@ -113,7 +113,7 @@ public class SnapshotManager
             if (!Directory.Exists(_snapshotDirectory))
             {
                 Directory.CreateDirectory(_snapshotDirectory);
-                Plugin.Log.LogInfo($"Created snapshot directory: {_snapshotDirectory}");
+                Plugin.Log.LogDebug($"Created snapshot directory: {_snapshotDirectory}");
             }
         }
         catch (Exception ex)
@@ -187,7 +187,7 @@ public class SnapshotManager
             // Log success if enabled in settings
             if (Configuration.Settings.LogSnapshotCreation.Value)
             {
-                Plugin.Log.LogInfo($"Snapshot saved: {snapshot}");
+                Plugin.Log.LogDebug($"Snapshot saved: {snapshot}");
                 Plugin.Log.LogDebug($"Snapshot file: {filePath}");
                 Plugin.Log.LogDebug($"Included slots: {string.Join(", ", snapshot.IncludedSlots)}");
             }
@@ -356,7 +356,7 @@ public class SnapshotManager
             if (File.Exists(filePath))
             {
                 File.Delete(filePath);
-                Plugin.Log.LogInfo($"Snapshot cleared for session {sessionId}");
+                Plugin.Log.LogDebug($"Snapshot cleared for session {sessionId}");
                 return true;
             }
 

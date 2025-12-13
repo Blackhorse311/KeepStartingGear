@@ -98,58 +98,32 @@ public class GameStartPatch : ModulePatch
     {
         try
         {
-            Plugin.Log.LogInfo("Game started - raid has begun!");
-
-            // Reset the restoration flag so inventory can be restored after this raid
-            // This is important because restoration should only happen once per raid
+            // Reset flags for new raid
             PostRaidInventoryPatch.ResetRestorationFlag();
-
-            // Reset the raid end tracking flag so we can detect the actual player's raid end
-            // This prevents bot extractions from being mistaken for player extractions
             RaidEndPatch.ResetRaidEndFlag();
 
-            // Get the main player from the GameWorld
-            // MainPlayer is the human player (not bots/scavs)
             var player = __instance.MainPlayer;
 
             if (player != null && player.gameObject != null)
             {
-                // ================================================================
-                // SCAV RAID CHECK
-                // ================================================================
-                // Only attach KeybindMonitor for PMC raids, not Scav raids
-                // Scav raids should not have gear protection - you're playing as a disposable scav
-                // EPlayerSide.Savage = Scav, EPlayerSide.Usec/Bear = PMC
+                // Only activate for PMC raids, not Scav
                 if (player.Side == EPlayerSide.Savage)
                 {
-                    Plugin.Log.LogInfo("Scav raid detected - KeepStartingGear is disabled for Scav runs");
-                    return; // Do not attach KeybindMonitor for Scav raids
-                }
-
-                // ================================================================
-                // MOD ENABLED CHECK
-                // ================================================================
-                // Check if the mod is enabled in F12 settings
-                // This allows users to disable the mod without restarting the game
-                if (!Configuration.Settings.ModEnabled.Value)
-                {
-                    Plugin.Log.LogInfo("KeepStartingGear is disabled in settings - not activating for this raid");
+                    Plugin.Log.LogDebug("Scav raid - KeepStartingGear disabled");
                     return;
                 }
 
-                Plugin.Log.LogInfo($"PMC raid detected (Side: {player.Side}) - enabling KeepStartingGear");
+                // Check if mod is enabled
+                if (!Configuration.Settings.ModEnabled.Value)
+                {
+                    Plugin.Log.LogDebug("Mod disabled in settings");
+                    return;
+                }
 
-                // Attach KeybindMonitor as a Unity component to the player's GameObject
-                // This allows it to receive Unity lifecycle callbacks (Update, etc.)
+                // Attach KeybindMonitor to player
                 var monitor = player.gameObject.AddComponent<KeybindMonitor>();
-
-                // Initialize the monitor with references it needs
-                // Player: For capturing inventory
-                // GameWorld: For determining location and raid status
                 monitor.Init(player, __instance);
-
-                Plugin.Log.LogInfo("KeybindMonitor attached to player");
-                Plugin.Log.LogInfo($"Snapshot keybind: {Configuration.Settings.SnapshotKeybind.Value}");
+                Plugin.Log.LogDebug($"KeybindMonitor attached, keybind: {Configuration.Settings.SnapshotKeybind.Value}");
             }
             else
             {

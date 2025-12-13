@@ -195,9 +195,8 @@ public class RaidEndInterceptor(
         {
             var playerSide = info.Results?.Profile?.Info?.Side ?? "unknown";
 
-            logger.Info($"[KeepStartingGear-Server] EndLocalRaid intercepted for session: {sessionID}");
-            logger.Info($"[KeepStartingGear-Server] Exit status: {info.Results?.Result}");
-            logger.Info($"[KeepStartingGear-Server] Player side: {playerSide}");
+            logger.Debug($"[KeepStartingGear-Server] EndLocalRaid intercepted for session: {sessionID}");
+            logger.Debug($"[KeepStartingGear-Server] Exit status: {info.Results?.Result}, Player side: {playerSide}");
             logger.Debug($"[KeepStartingGear-Server] Snapshots path: {_snapshotsPath}");
 
             // Only process PMC deaths (Scav uses separate inventory)
@@ -211,7 +210,7 @@ public class RaidEndInterceptor(
 
             if (isPmc && playerDied)
             {
-                logger.Info("[KeepStartingGear-Server] PMC death detected - checking for snapshot...");
+                logger.Debug("[KeepStartingGear-Server] PMC death detected - checking for snapshot...");
 
                 // Try to restore from snapshot
                 bool restored = TryRestoreFromSnapshot(sessionID, info);
@@ -219,21 +218,20 @@ public class RaidEndInterceptor(
                 if (restored)
                 {
                     logger.Info("[KeepStartingGear-Server] Inventory restored from snapshot!");
-                    logger.Info("[KeepStartingGear-Server] Items picked up after snapshot have been lost (as intended).");
 
                     // Set flag so CustomInRaidHelper skips DeleteInventory
                     SnapshotRestorationState.InventoryRestoredFromSnapshot = true;
-                    logger.Info("[KeepStartingGear-Server] Set InventoryRestoredFromSnapshot flag to skip DeleteInventory");
+                    logger.Debug("[KeepStartingGear-Server] Set InventoryRestoredFromSnapshot flag to skip DeleteInventory");
                 }
                 else
                 {
-                    logger.Info("[KeepStartingGear-Server] No snapshot found or restoration failed - normal death processing.");
+                    logger.Debug("[KeepStartingGear-Server] No snapshot found or restoration failed - normal death processing.");
                 }
             }
             else if (!playerDied)
             {
                 // Player extracted - clear any snapshot to prevent accidental restoration
-                logger.Info("[KeepStartingGear-Server] Player survived/extracted - clearing any snapshots...");
+                logger.Debug("[KeepStartingGear-Server] Player survived/extracted - clearing any snapshots...");
                 ClearSnapshot(sessionID);
             }
         }
@@ -252,9 +250,7 @@ public class RaidEndInterceptor(
         // Post-processing note (helps diagnose conflicts with other mods like SVM)
         if (SnapshotRestorationState.InventoryRestoredFromSnapshot)
         {
-            logger.Info("[KeepStartingGear-Server] POST-PROCESSING: Inventory restoration completed.");
-            logger.Info("[KeepStartingGear-Server] If gear is missing after raid, another mod (like SVM softcore) may be modifying inventory after us.");
-            logger.Info("[KeepStartingGear-Server] Check if SVM or similar mods have their own gear protection disabled.");
+            logger.Debug("[KeepStartingGear-Server] POST-PROCESSING: Inventory restoration completed.");
 
             // Reset the flag for next raid
             SnapshotRestorationState.InventoryRestoredFromSnapshot = false;
@@ -295,11 +291,11 @@ public class RaidEndInterceptor(
 
             if (!File.Exists(snapshotPath))
             {
-                logger.Info($"[KeepStartingGear-Server] No snapshot file found at: {snapshotPath}");
+                logger.Debug($"[KeepStartingGear-Server] No snapshot file found at: {snapshotPath}");
                 return false;
             }
 
-            logger.Info($"[KeepStartingGear-Server] Found snapshot file: {snapshotPath}");
+            logger.Debug($"[KeepStartingGear-Server] Found snapshot file: {snapshotPath}");
 
             // Read and deserialize snapshot
             var snapshotJson = File.ReadAllText(snapshotPath);
@@ -318,16 +314,16 @@ public class RaidEndInterceptor(
                 return false;
             }
 
-            logger.Info($"[KeepStartingGear-Server] Snapshot contains {snapshot.Items.Count} items");
+            logger.Debug($"[KeepStartingGear-Server] Snapshot contains {snapshot.Items.Count} items");
 
             // Debug: Log deserialized IncludedSlots
             if (snapshot.IncludedSlots != null)
             {
-                logger.Info($"[KeepStartingGear-Server] Deserialized IncludedSlots: [{string.Join(", ", snapshot.IncludedSlots)}]");
+                logger.Debug($"[KeepStartingGear-Server] Deserialized IncludedSlots: [{string.Join(", ", snapshot.IncludedSlots)}]");
             }
             else
             {
-                logger.Warning("[KeepStartingGear-Server] IncludedSlots is NULL after deserialization!");
+                logger.Debug("[KeepStartingGear-Server] IncludedSlots is NULL after deserialization (legacy snapshot)");
             }
 
             // Get current inventory from the raid end data
@@ -359,7 +355,7 @@ public class RaidEndInterceptor(
                 return false;
             }
 
-            logger.Info($"[KeepStartingGear-Server] Profile Equipment ID: {equipmentId}");
+            logger.Debug($"[KeepStartingGear-Server] Profile Equipment ID: {equipmentId}");
 
             // Find Equipment container ID in the snapshot
             string? snapshotEquipmentId = null;
@@ -372,7 +368,7 @@ public class RaidEndInterceptor(
                 }
             }
 
-            logger.Info($"[KeepStartingGear-Server] Snapshot Equipment ID: {snapshotEquipmentId}");
+            logger.Debug($"[KeepStartingGear-Server] Snapshot Equipment ID: {snapshotEquipmentId}");
 
             // ================================================================
             // Determine Which Slots Were Configured for Capture
@@ -387,11 +383,11 @@ public class RaidEndInterceptor(
                 {
                     includedSlotIds.Add(slot);
                 }
-                logger.Info($"[KeepStartingGear-Server] User configured slots to manage: {string.Join(", ", includedSlotIds)}");
+                logger.Debug($"[KeepStartingGear-Server] User configured slots to manage: {string.Join(", ", includedSlotIds)}");
             }
             else
             {
-                logger.Warning("[KeepStartingGear-Server] No IncludedSlots in snapshot - this is a legacy snapshot, will use item-based detection");
+                logger.Debug("[KeepStartingGear-Server] No IncludedSlots in snapshot - legacy snapshot, using item-based detection");
             }
 
             // Get the set of slot IDs that HAVE ITEMS in the snapshot
@@ -405,7 +401,7 @@ public class RaidEndInterceptor(
                 }
             }
 
-            logger.Info($"[KeepStartingGear-Server] Snapshot contains slots with items: {string.Join(", ", snapshotSlotIds)}");
+            logger.Debug($"[KeepStartingGear-Server] Snapshot contains slots with items: {string.Join(", ", snapshotSlotIds)}");
 
             // Get the set of slot IDs that were EMPTY at snapshot time
             // Items in these slots should be REMOVED (they were looted during raid)
@@ -416,11 +412,7 @@ public class RaidEndInterceptor(
                 {
                     emptySlotIds.Add(emptySlot);
                 }
-                logger.Info($"[KeepStartingGear-Server] Snapshot tracked empty slots: {string.Join(", ", emptySlotIds)}");
-            }
-            else
-            {
-                logger.Info("[KeepStartingGear-Server] No empty slots tracked in snapshot (legacy snapshot or all slots had items)");
+                logger.Debug($"[KeepStartingGear-Server] Snapshot tracked empty slots: {string.Join(", ", emptySlotIds)}");
             }
 
             // ================================================================
@@ -472,19 +464,19 @@ public class RaidEndInterceptor(
                         }
                         else if (emptySlotIds.Contains(slotId))
                         {
-                            logger.Info($"[KeepStartingGear-Server] Removing item from slot '{slotId}' (slot was empty at snapshot time - loot lost): {item.Template}");
+                            logger.Debug($"[KeepStartingGear-Server] Removing item from slot '{slotId}' (slot was empty at snapshot time - loot lost): {item.Template}");
                         }
                         else
                         {
                             // Slot is in IncludedSlots but wasn't in snapshot (maybe added after snapshot?)
-                            logger.Info($"[KeepStartingGear-Server] Removing item from slot '{slotId}' (slot is managed but had no snapshot data): {item.Template}");
+                            logger.Debug($"[KeepStartingGear-Server] Removing item from slot '{slotId}' (slot is managed but had no snapshot data): {item.Template}");
                         }
                     }
                     else
                     {
                         // This slot is NOT managed by the mod - normal death penalty applies
                         // Items in this slot are LOST (not restored from snapshot)
-                        logger.Info($"[KeepStartingGear-Server] Removing item from slot '{slotId}' (slot not protected - normal death penalty): {item.Template}");
+                        logger.Debug($"[KeepStartingGear-Server] Removing item from slot '{slotId}' (slot not protected - normal death penalty): {item.Template}");
                     }
                 }
             }
@@ -508,12 +500,12 @@ public class RaidEndInterceptor(
                 }
             }
 
-            logger.Info($"[KeepStartingGear-Server] Found {equipmentItemIds.Count} equipment items to remove (all equipment lost on death)");
+            logger.Debug($"[KeepStartingGear-Server] Found {equipmentItemIds.Count} equipment items to remove");
 
             // Remove only equipment items that are in captured slots
             currentInventory.Items.RemoveAll(item => equipmentItemIds.Contains(item.Id!));
 
-            logger.Info($"[KeepStartingGear-Server] Removed equipment items, {currentInventory.Items.Count} items remaining");
+            logger.Debug($"[KeepStartingGear-Server] Removed equipment items, {currentInventory.Items.Count} items remaining");
 
             // ================================================================
             // Add Snapshot Items
@@ -529,7 +521,7 @@ public class RaidEndInterceptor(
                     existingItemIds.Add(item.Id);
                 }
             }
-            logger.Info($"[KeepStartingGear-Server] Existing inventory has {existingItemIds.Count} items before restoration");
+            logger.Debug($"[KeepStartingGear-Server] Existing inventory has {existingItemIds.Count} items before restoration");
 
             int addedCount = 0;
             int skippedDuplicates = 0;
@@ -550,7 +542,7 @@ public class RaidEndInterceptor(
                 // This prevents the "An item with the same key has already been added" crash
                 if (existingItemIds.Contains(snapshotItem.Id))
                 {
-                    logger.Warning($"[KeepStartingGear-Server] DUPLICATE PREVENTED: Item {snapshotItem.Id} (Tpl={snapshotItem.Tpl}) already exists in inventory - skipping to prevent crash");
+                    logger.Debug($"[KeepStartingGear-Server] DUPLICATE PREVENTED: Item {snapshotItem.Id} already exists - skipping");
                     skippedDuplicates++;
                     continue;
                 }
@@ -582,7 +574,7 @@ public class RaidEndInterceptor(
                     // This is set directly on the Location property as an integer
                     newItem.Location = snapshotItem.LocationIndex.Value;
 
-                    logger.Info($"[KeepStartingGear-Server] [CARTRIDGE] Restored cartridge position {snapshotItem.LocationIndex.Value} for {snapshotItem.Tpl} (ID: {snapshotItem.Id})");
+                    logger.Debug($"[KeepStartingGear-Server] [CARTRIDGE] Restored cartridge position {snapshotItem.LocationIndex.Value} for {snapshotItem.Tpl}");
                 }
                 else if (snapshotItem.Location != null)
                 {
@@ -594,21 +586,6 @@ public class RaidEndInterceptor(
                         R = (ItemRotation)snapshotItem.Location.R,
                         IsSearched = snapshotItem.Location.IsSearched
                     };
-
-                    // Log location restoration (Info level for debugging)
-                    logger.Info($"[KeepStartingGear-Server] [LOCATION] Restored grid position for {snapshotItem.Tpl}: X={snapshotItem.Location.X}, Y={snapshotItem.Location.Y}, R={snapshotItem.Location.R}");
-                }
-                else
-                {
-                    // Log when location is null but might be expected
-                    if (snapshotItem.SlotId != null &&
-                        (snapshotItem.SlotId.StartsWith("main") ||
-                         snapshotItem.SlotId.StartsWith("0") ||
-                         snapshotItem.SlotId.StartsWith("1") ||
-                         snapshotItem.SlotId.Equals("cartridges", StringComparison.OrdinalIgnoreCase)))
-                    {
-                        logger.Warning($"[KeepStartingGear-Server] [LOCATION] Grid item {snapshotItem.Tpl} (SlotId={snapshotItem.SlotId}) has NO location data!");
-                    }
                 }
 
                 // Copy update data (stack count, durability, etc.)
@@ -637,54 +614,29 @@ public class RaidEndInterceptor(
                                     if (stackProp.TryGetInt32(out int stackCount) && stackCount > 0)
                                     {
                                         newItem.Upd.StackObjectsCount = stackCount;
-                                        logger.Info($"[KeepStartingGear-Server] [UPD] Manually extracted StackObjectsCount={stackCount} for {snapshotItem.Id}");
+                                        logger.Debug($"[KeepStartingGear-Server] [UPD] Manually extracted StackObjectsCount={stackCount} for {snapshotItem.Id}");
                                     }
                                 }
                             }
-                        }
-
-                        // Log for ammo/stack count issues
-                        if (newItem.Upd?.StackObjectsCount != null && newItem.Upd.StackObjectsCount > 1)
-                        {
-                            logger.Info($"[KeepStartingGear-Server] [AMMO] Item {snapshotItem.Id} (Tpl={snapshotItem.Tpl}) has StackObjectsCount={newItem.Upd.StackObjectsCount}, ParentId={newItem.ParentId}, SlotId={newItem.SlotId}");
-                        }
-                        else
-                        {
-                            // Log when we expected a stack count but didn't get one
-                            logger.Debug($"[KeepStartingGear-Server] [UPD] Item {snapshotItem.Id} has Upd but StackObjectsCount is null or 0");
                         }
                     }
                     catch (Exception ex)
                     {
                         // If Upd conversion fails, skip it - item will use defaults
                         logger.Warning($"[KeepStartingGear-Server] Could not convert Upd for item {snapshotItem.Id}: {ex.Message}");
-                        logger.Debug($"[KeepStartingGear-Server] Upd type was: {snapshotItem.Upd?.GetType().FullName}");
                     }
                 }
 
                 currentInventory.Items.Add(newItem);
                 existingItemIds.Add(newItem.Id!); // Track newly added item to prevent duplicates within snapshot
                 addedCount++;
-
-                // Verify the item was added with correct data
-                if (newItem.Upd?.StackObjectsCount != null && newItem.Upd.StackObjectsCount > 1)
-                {
-                    logger.Info($"[KeepStartingGear-Server] [VERIFY] Added item {newItem.Id} with StackObjectsCount={newItem.Upd.StackObjectsCount}");
-                }
-                if (newItem.Location != null)
-                {
-                    // Location is type object, need to cast or serialize to check
-                    var locJson = JsonSerializer.Serialize(newItem.Location);
-                    logger.Info($"[KeepStartingGear-Server] [VERIFY] Added item {newItem.Id} with location: {locJson}");
-                }
             }
 
-            logger.Info($"[KeepStartingGear-Server] Added {addedCount} items from snapshot");
+            logger.Debug($"[KeepStartingGear-Server] Added {addedCount} items from snapshot, total now: {currentInventory.Items.Count}");
             if (skippedDuplicates > 0)
             {
-                logger.Warning($"[KeepStartingGear-Server] SKIPPED {skippedDuplicates} duplicate items to prevent crash");
+                logger.Debug($"[KeepStartingGear-Server] Skipped {skippedDuplicates} duplicate items");
             }
-            logger.Info($"[KeepStartingGear-Server] Total items now: {currentInventory.Items.Count}");
 
             // ================================================================
             // Cleanup
@@ -694,7 +646,7 @@ public class RaidEndInterceptor(
             try
             {
                 File.Delete(snapshotPath);
-                logger.Info($"[KeepStartingGear-Server] Deleted snapshot file: {snapshotPath}");
+                logger.Debug($"[KeepStartingGear-Server] Deleted snapshot file: {snapshotPath}");
             }
             catch (Exception ex)
             {
@@ -732,7 +684,7 @@ public class RaidEndInterceptor(
             if (File.Exists(snapshotPath))
             {
                 File.Delete(snapshotPath);
-                logger.Info($"[KeepStartingGear-Server] Cleared snapshot on extraction: {snapshotPath}");
+                logger.Debug($"[KeepStartingGear-Server] Cleared snapshot on extraction: {snapshotPath}");
             }
         }
         catch (Exception ex)

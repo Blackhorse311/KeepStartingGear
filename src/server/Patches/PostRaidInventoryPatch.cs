@@ -191,7 +191,7 @@ public class PostRaidInventoryPatch : ModulePatch
     {
         try
         {
-            Plugin.Log.LogInfo("Stash opened - checking for any snapshots to restore");
+            Plugin.Log.LogDebug("Stash opened - checking for any snapshots to restore");
 
             // Find the most recent snapshot file
             // We can't reliably get session ID at the stash screen, so we
@@ -200,7 +200,7 @@ public class PostRaidInventoryPatch : ModulePatch
 
             if (mostRecentSnapshot == null)
             {
-                Plugin.Log.LogInfo("No snapshots found - nothing to restore");
+                Plugin.Log.LogDebug("No snapshots found - nothing to restore");
                 return;
             }
 
@@ -212,9 +212,9 @@ public class PostRaidInventoryPatch : ModulePatch
                 return;
             }
 
-            Plugin.Log.LogInfo($"Found snapshot from {mostRecentSnapshot.Timestamp:HH:mm:ss} with {mostRecentSnapshot.Items.Count} items");
-            Plugin.Log.LogInfo($"Snapshot session ID: {mostRecentSnapshot.SessionId}");
-            Plugin.Log.LogInfo("Attempting to restore inventory via profile JSON manipulation...");
+            Plugin.Log.LogDebug($"Found snapshot from {mostRecentSnapshot.Timestamp:HH:mm:ss} with {mostRecentSnapshot.Items.Count} items");
+            Plugin.Log.LogDebug($"Snapshot session ID: {mostRecentSnapshot.SessionId}");
+            Plugin.Log.LogDebug("Attempting to restore inventory via profile JSON manipulation...");
 
             // Restore the inventory by directly editing the profile JSON file
             // ProfileService handles all the JSON manipulation
@@ -222,7 +222,7 @@ public class PostRaidInventoryPatch : ModulePatch
 
             if (success)
             {
-                Plugin.Log.LogInfo("Inventory restored successfully to profile JSON!");
+                Plugin.Log.LogDebug("Inventory restored successfully to profile JSON!");
 
                 // Clear the snapshot after successful restoration
                 // This prevents it from being restored again
@@ -290,19 +290,19 @@ public class PostRaidInventoryPatch : ModulePatch
     {
         try
         {
-            Plugin.Log.LogInfo("Attempting to reload profile from server...");
+            Plugin.Log.LogDebug("Attempting to reload profile from server...");
 
             // Check if TarkovApplication exists
             // TarkovApplication is the main game application class
             if (TarkovApplication.Exist(out var app))
             {
-                Plugin.Log.LogInfo("Found TarkovApplication, triggering backend reload...");
+                Plugin.Log.LogDebug("Found TarkovApplication, triggering backend reload...");
 
                 // RecreateCurrentBackend reloads all data from the server
                 // This includes the profile we just modified
                 await app.RecreateCurrentBackend();
 
-                Plugin.Log.LogInfo("Backend reload completed - inventory should now be visible!");
+                Plugin.Log.LogDebug("Backend reload completed - inventory should now be visible!");
 
                 // NotificationManagerClass.DisplayMessageNotification(
                 //     "[Keep Starting Gear] Inventory restored successfully!",

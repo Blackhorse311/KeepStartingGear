@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] - 2025-12-13
+
+### Fixed
+
+- **SPT 4.0.8 Compatibility**: Updated server NuGet packages from 4.0.2 to 4.0.8 to fix inventory restoration failures. (Reported by @Alcorsa)
+
+### Changed
+
+- **Forge Logging Compliance**: Reduced verbose logging to comply with Forge Content Guidelines. Most operational messages moved to Debug level, keeping only essential status messages at Info level.
+
+### Compatibility
+
+- SPT 4.0.x (tested on 4.0.8)
+
+---
+
 ## [1.4.0] - 2025-12-11
 
 ### Fixed
@@ -38,7 +54,7 @@ Special thanks to our community bug hunters who helped improve this release:
 
 ### Compatibility
 
-- SPT 4.0.x (tested on 4.0.7)
+- SPT 4.0.x (tested on 4.0.8)
 - **SVM**: Partially compatible - disable Softcore Mode and Safe Exit when using KSG
 
 ---

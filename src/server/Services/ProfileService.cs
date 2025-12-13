@@ -89,7 +89,7 @@ public class ProfileService
         // Find the SPT profiles directory by searching known locations
         _profilesDirectory = FindProfilesDirectory();
         Instance = this;
-        Plugin.Log.LogInfo($"ProfileService initialized with directory: {_profilesDirectory}");
+        Plugin.Log.LogDebug($"ProfileService initialized with directory: {_profilesDirectory}");
     }
 
     // ========================================================================
@@ -142,7 +142,7 @@ public class ProfileService
                 Plugin.Log.LogDebug($"Checking path: {path}");
                 if (Directory.Exists(path))
                 {
-                    Plugin.Log.LogInfo($"Found profiles directory: {path}");
+                    Plugin.Log.LogDebug($"Found profiles directory: {path}");
                     return path;
                 }
             }
@@ -219,7 +219,7 @@ public class ProfileService
                 .OrderByDescending(f => File.GetLastWriteTimeUtc(f))
                 .FirstOrDefault();
 
-            Plugin.Log.LogInfo($"Most recent profile: {Path.GetFileName(mostRecentFile)}");
+            Plugin.Log.LogDebug($"Most recent profile: {Path.GetFileName(mostRecentFile)}");
             return mostRecentFile;
         }
         catch (Exception ex)
@@ -275,7 +275,7 @@ public class ProfileService
                 return false;
             }
 
-            Plugin.Log.LogInfo($"Restoring inventory to profile: {Path.GetFileName(profileFilePath)}");
+            Plugin.Log.LogDebug($"Restoring inventory to profile: {Path.GetFileName(profileFilePath)}");
 
             // Create backup before modifying
             CreateBackup(profileFilePath);
@@ -373,7 +373,7 @@ public class ProfileService
                 }
             }
 
-            Plugin.Log.LogInfo($"Removing {itemsToRemove.Count} existing inventory items");
+            Plugin.Log.LogDebug($"Removing {itemsToRemove.Count} existing inventory items");
             foreach (var item in itemsToRemove)
             {
                 itemsArray.Remove(item);
@@ -452,7 +452,7 @@ public class ProfileService
                 restoredCount++;
             }
 
-            Plugin.Log.LogInfo($"Added {restoredCount} items from snapshot to profile");
+            Plugin.Log.LogDebug($"Added {restoredCount} items from snapshot to profile");
 
             // ================================================================
             // Save Modified Profile
@@ -460,7 +460,7 @@ public class ProfileService
             string modifiedJson = profileObject.ToString(Formatting.Indented);
             File.WriteAllText(profileFilePath, modifiedJson);
 
-            Plugin.Log.LogInfo($"Successfully restored inventory to profile: {Path.GetFileName(profileFilePath)}");
+            Plugin.Log.LogDebug($"Successfully restored inventory to profile: {Path.GetFileName(profileFilePath)}");
             return true;
         }
         catch (Exception ex)

@@ -1,0 +1,100 @@
+================================================================================
+KEEP STARTING GEAR v1.4.1 - INSTALLATION GUIDE
+================================================================================
+
+REQUIREMENTS
+------------
+- SPT 4.0.x (tested on 4.0.8)
+- BepInEx 5.x (included with SPT)
+
+No additional dependencies required.
+
+
+INSTALLATION (3 Simple Steps)
+-----------------------------
+
+Step 1: Close SPT
+   - Make sure SPT Server and the game are not running
+
+Step 2: Extract Files
+   - Extract this archive directly into your SPT root folder
+   - This is the folder where SPT.Server.exe is located
+   - When prompted, choose to merge/overwrite folders
+
+Step 3: Verify Installation
+   - You should now have these files:
+
+   [Your SPT Folder]/
+   ├── BepInEx/
+   │   └── plugins/
+   │       └── Blackhorse311-KeepStartingGear/
+   │           └── Blackhorse311.KeepStartingGear.dll    <-- Client mod
+   └── user/
+       └── mods/
+           └── Blackhorse311-KeepStartingGear/
+               └── Blackhorse311.KeepStartingGear.Server.dll    <-- Server mod
+
+That's it! Start SPT Server, then launch the game.
+
+
+QUICK START GUIDE
+-----------------
+
+Default Behavior (no configuration needed):
+1. Start a raid - your gear is automatically saved
+2. You'll see a green notification: "Auto-Snapshot Saved"
+3. If you die, your gear is automatically restored
+4. If you extract successfully, the snapshot is cleared
+
+Configuration (optional):
+- Press F12 in-game to open the BepInEx Configuration Manager
+- Find "Keep Starting Gear" in the list
+- Adjust settings as desired (snapshot mode, keybind, slot protection, etc.)
+
+
+CONFIGURATION PRESETS
+---------------------
+
+Casual (Default):
+- Automatic snapshots at raid start
+- All gear protected
+- No manual intervention needed
+
+Hardcore:
+- Manual snapshots only (press Ctrl+Alt+F8)
+- Found-in-Raid items excluded
+- Insured items excluded
+
+
+UNINSTALLATION
+--------------
+
+Step 1: Delete the client mod folder:
+   BepInEx/plugins/Blackhorse311-KeepStartingGear/
+
+Step 2: Delete the server mod folder:
+   user/mods/Blackhorse311-KeepStartingGear/
+
+Step 3 (optional): Delete the config file:
+   BepInEx/config/com.blackhorse311.keepstartinggear.cfg
+
+
+TROUBLESHOOTING
+---------------
+
+Mod not loading?
+- Verify both DLL files are in the correct folders
+- Check BepInEx/LogOutput.log for errors
+
+Gear not restoring on death?
+- Make sure both client AND server mods are installed
+- Check SPT server console for error messages
+
+Need help?
+- GitHub Issues: https://github.com/Blackhorse311/KeepStartingGear/issues
+- Forge Page: https://forge.sp-tarkov.com/mod/2470/keep-starting-gear
+
+
+================================================================================
+Author: Blackhorse311 | License: MIT | https://github.com/Blackhorse311/KeepStartingGear
+================================================================================

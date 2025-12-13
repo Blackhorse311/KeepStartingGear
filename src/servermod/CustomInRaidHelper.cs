@@ -133,7 +133,7 @@ public class CustomInRaidHelper : InRaidHelper
         // Check if inventory was already restored (by RaidEndInterceptor when not using SVM)
         if (SnapshotRestorationState.InventoryRestoredFromSnapshot)
         {
-            _logger.Info("[KeepStartingGear-Server] Skipping DeleteInventory - inventory was restored from snapshot");
+            _logger.Debug("[KeepStartingGear-Server] Skipping DeleteInventory - inventory was restored from snapshot");
             SnapshotRestorationState.Reset();
             return;
         }
@@ -142,7 +142,7 @@ public class CustomInRaidHelper : InRaidHelper
         // When SVM is installed, RaidEndInterceptor never runs, so we do restoration here
         if (TryRestoreFromSnapshot(sessionId.ToString(), pmcData))
         {
-            _logger.Info("[KeepStartingGear-Server] Inventory restored from snapshot in DeleteInventory");
+            _logger.Info("[KeepStartingGear-Server] Inventory restored from snapshot!");
             // Don't call base - we've restored the inventory
             return;
         }
@@ -187,16 +187,12 @@ public class CustomInRaidHelper : InRaidHelper
                 return false;
             }
 
-            _logger.Info($"[KeepStartingGear-Server] Loaded snapshot with {snapshot.Items.Count} items");
+            _logger.Debug($"[KeepStartingGear-Server] Loaded snapshot with {snapshot.Items.Count} items");
 
             // Debug: Log deserialized IncludedSlots
             if (snapshot.IncludedSlots != null)
             {
-                _logger.Info($"[KeepStartingGear-Server] Deserialized IncludedSlots: [{string.Join(", ", snapshot.IncludedSlots)}]");
-            }
-            else
-            {
-                _logger.Warning("[KeepStartingGear-Server] IncludedSlots is NULL after deserialization!");
+                _logger.Debug($"[KeepStartingGear-Server] Deserialized IncludedSlots: [{string.Join(", ", snapshot.IncludedSlots)}]");
             }
 
             // Find Equipment container in profile
@@ -221,11 +217,7 @@ public class CustomInRaidHelper : InRaidHelper
                 {
                     includedSlotIds.Add(slot);
                 }
-                _logger.Info($"[KeepStartingGear-Server] User configured slots to manage: {string.Join(", ", includedSlotIds)}");
-            }
-            else
-            {
-                _logger.Warning("[KeepStartingGear-Server] No IncludedSlots in snapshot - this is a legacy snapshot");
+                _logger.Debug($"[KeepStartingGear-Server] User configured slots to manage: {string.Join(", ", includedSlotIds)}");
             }
 
             // Track which slots had items in snapshot
@@ -275,7 +267,7 @@ public class CustomInRaidHelper : InRaidHelper
                     }
                     else
                     {
-                        _logger.Info($"[KeepStartingGear-Server] Removing item from slot '{item.SlotId}' (slot not protected - normal death penalty)");
+                        _logger.Debug($"[KeepStartingGear-Server] Removing item from slot '{item.SlotId}' (slot not protected - normal death penalty)");
                     }
                 }
             }
@@ -297,7 +289,7 @@ public class CustomInRaidHelper : InRaidHelper
 
             // Remove all equipment items
             pmcData.Inventory.Items.RemoveAll(item => equipmentItemIds.Contains(item.Id!));
-            _logger.Info($"[KeepStartingGear-Server] Removed {equipmentItemIds.Count} items (all equipment lost on death)");
+            _logger.Debug($"[KeepStartingGear-Server] Removed {equipmentItemIds.Count} items");
 
             // CRITICAL: Build a set of all existing item IDs to prevent duplicates
             // This fixes the "An item with the same key has already been added" crash
@@ -309,7 +301,7 @@ public class CustomInRaidHelper : InRaidHelper
                     existingItemIds.Add(item.Id);
                 }
             }
-            _logger.Info($"[KeepStartingGear-Server] Existing inventory has {existingItemIds.Count} items before restoration");
+            _logger.Debug($"[KeepStartingGear-Server] Existing inventory has {existingItemIds.Count} items before restoration");
 
             // Add snapshot items
             int addedCount = 0;
@@ -380,10 +372,10 @@ public class CustomInRaidHelper : InRaidHelper
                 addedCount++;
             }
 
-            _logger.Info($"[KeepStartingGear-Server] Added {addedCount} items from snapshot");
+            _logger.Debug($"[KeepStartingGear-Server] Added {addedCount} items from snapshot");
             if (skippedDuplicates > 0)
             {
-                _logger.Warning($"[KeepStartingGear-Server] SKIPPED {skippedDuplicates} duplicate items to prevent crash");
+                _logger.Debug($"[KeepStartingGear-Server] Skipped {skippedDuplicates} duplicate items");
             }
 
             // Delete snapshot file

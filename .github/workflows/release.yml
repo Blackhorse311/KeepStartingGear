@@ -1,0 +1,60 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # Triggers on version tags like v1.4.1
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '9.0.x'
+
+    - name: Restore dependencies (Client)
+      run: dotnet restore src/server/Blackhorse311.KeepStartingGear.csproj
+
+    - name: Restore dependencies (Server)
+      run: dotnet restore src/servermod/Blackhorse311.KeepStartingGear.Server.csproj
+
+    - name: Build Client Mod
+      run: dotnet build src/server/Blackhorse311.KeepStartingGear.csproj --configuration Release --no-restore
+
+    - name: Build Server Mod
+      run: dotnet build src/servermod/Blackhorse311.KeepStartingGear.Server.csproj --configuration Release --no-restore
+
+    - name: Create release structure
+      run: |
+        mkdir -p release/BepInEx/plugins/Blackhorse311-KeepStartingGear
+        mkdir -p release/user/mods/Blackhorse311-KeepStartingGear
+        cp bin/BepInEx/plugins/Blackhorse311-KeepStartingGear/Blackhorse311.KeepStartingGear.dll release/BepInEx/plugins/Blackhorse311-KeepStartingGear/
+        cp src/servermod/bin/Release/net9.0/Blackhorse311.KeepStartingGear.Server.dll release/user/mods/Blackhorse311-KeepStartingGear/
+        cp LICENSE release/
+        cp README.md release/
+        cp CHANGELOG.md release/
+        cp INSTALL.txt release/
+      shell: bash
+
+    - name: Install 7-Zip
+      run: choco install 7zip -y
+
+    - name: Create archive
+      run: |
+        cd release
+        7z a ../Blackhorse311-KeepStartingGear-${{ github.ref_name }}.7z *
+      shell: bash
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: Blackhorse311-KeepStartingGear-${{ github.ref_name }}.7z
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

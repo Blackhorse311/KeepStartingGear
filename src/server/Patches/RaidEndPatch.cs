@@ -215,7 +215,7 @@ public class RaidEndPatch : ModulePatch
             // Mark that we've processed the raid end to prevent duplicate notifications
             _raidEndProcessed = true;
 
-            Plugin.Log.LogInfo($"Raid ending - Exit status: {exitStatus}, Exit name: {exitName}");
+            Plugin.Log.LogDebug($"Raid ending - Exit status: {exitStatus}, Exit name: {exitName}");
             Plugin.Log.LogDebug($"Exit status enum value: {(int)exitStatus}");
 
             // Reset the snapshot limit tracking for the next raid
@@ -227,7 +227,7 @@ public class RaidEndPatch : ModulePatch
             // ================================================================
             if (playerDied)
             {
-                Plugin.Log.LogInfo("Player died or failed to extract");
+                Plugin.Log.LogDebug("Player died or failed to extract");
 
                 // Check if we have a snapshot to restore
                 var snapshot = SnapshotManager.Instance.GetMostRecentSnapshot();
@@ -241,8 +241,8 @@ public class RaidEndPatch : ModulePatch
                     return;
                 }
 
-                Plugin.Log.LogInfo($"Found snapshot with {snapshot.Items.Count} items from {snapshot.Timestamp:HH:mm:ss}");
-                Plugin.Log.LogInfo("Server will restore inventory from snapshot (items picked up after snapshot will be lost)");
+                Plugin.Log.LogDebug($"Found snapshot with {snapshot.Items.Count} items from {snapshot.Timestamp:HH:mm:ss}");
+                Plugin.Log.LogDebug("Server will restore inventory from snapshot (items picked up after snapshot will be lost)");
 
                 // IMPORTANT: DON'T clear the snapshot here!
                 // The server needs to read it to perform restoration.
@@ -256,7 +256,7 @@ public class RaidEndPatch : ModulePatch
             // ================================================================
             else if (playerExtracted)
             {
-                Plugin.Log.LogInfo("Player extracted successfully");
+                Plugin.Log.LogDebug("Player extracted successfully");
 
                 // NOTE: We intentionally DO NOT clear the snapshot here on the client side.
                 // The server handles snapshot cleanup in RaidEndInterceptor.EndLocalRaid()
@@ -269,7 +269,7 @@ public class RaidEndPatch : ModulePatch
                 var snapshot = SnapshotManager.Instance.GetMostRecentSnapshot();
                 if (snapshot != null)
                 {
-                    Plugin.Log.LogInfo($"Snapshot exists with {snapshot.Items.Count} items - server will clear it");
+                    Plugin.Log.LogDebug($"Snapshot exists with {snapshot.Items.Count} items - server will clear it");
 
                     // Show notification (server will handle actual cleanup)
                     NotificationOverlay.ShowSuccess("Extracted Successfully!");
@@ -281,7 +281,7 @@ public class RaidEndPatch : ModulePatch
             else
             {
                 // Other exit statuses (Run, Transit, etc.) - no special handling
-                Plugin.Log.LogInfo($"Exit status: {exitStatus} - no action taken");
+                Plugin.Log.LogDebug($"Exit status: {exitStatus} - no action taken");
             }
         }
         catch (Exception ex)
