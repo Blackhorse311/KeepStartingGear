@@ -187,7 +187,7 @@ Settings are locked when a raid starts. Changing snapshot mode mid-raid shows a 
 
 | Mod | Status | Notes |
 |-----|--------|-------|
-| **SVM (Server Value Modifier)** | **Partially Compatible** | Works alongside SVM as of v1.3.0, with exceptions noted below. |
+| **SVM (Server Value Modifier)** | **Partially Compatible** | Works alongside SVM with exceptions noted below. |
 
 **SVM Compatibility Details:**
 - **Softcore Mode**: Incompatible - will conflict with KSG's gear restoration. Disable this if using KSG.
