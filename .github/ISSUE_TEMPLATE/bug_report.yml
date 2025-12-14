@@ -22,7 +22,7 @@ body:
     attributes:
       label: Keep Starting Gear Version
       description: What version of the mod are you using?
-      placeholder: "e.g., 1.4.2"
+      placeholder: "e.g., 1.4.3"
     validations:
       required: true
 

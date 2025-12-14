@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.3] - 2025-12-14
+
+### Fixed
+
+- **Secure Container Deleted When Disabled**: Fixed critical bug where disabling "Restore Secure Container to Snapshot" in config caused the secure container to be deleted entirely on death, instead of being preserved with normal Tarkov behavior. Non-managed slots are now properly preserved. (Reported by @rimmyjob via GitHub #4)
+
+- **Release Package Structure**: Fixed folder structure in release packages - server mod now correctly placed in `SPT/user/mods/` instead of `user/mods/`. (Reported by @VeiledFury)
+
+### Compatibility
+
+- SPT 4.0.x (tested on 4.0.8)
+
+---
+
 ## [1.4.2] - 2025-12-13
 
 ### Fixed

@@ -450,33 +450,35 @@ public class RaidEndInterceptor(
                         slotIsManaged = snapshotSlotIds.Contains(slotId) || emptySlotIds.Contains(slotId);
                     }
 
-                    // ALL equipment items are removed (player died)
-                    // The difference is:
-                    // - Managed slots: Items will be RESTORED from snapshot
-                    // - Non-managed slots: Items will be LOST (normal death penalty)
+                    // Only remove items from MANAGED slots
+                    // - Managed slots: Items will be REMOVED then RESTORED from snapshot
+                    // - Non-managed slots: Items are PRESERVED (not touched by the mod)
+                    //   This allows normal Tarkov behavior for disabled slots (e.g., secure container keeps items)
+
+                    if (!slotIsManaged)
+                    {
+                        // This slot is NOT managed by the mod - PRESERVE it
+                        // Don't add to equipmentItemIds, so it won't be removed
+                        logger.Debug($"[KeepStartingGear-Server] PRESERVING item in slot '{slotId}' (slot not managed by mod): {item.Template}");
+                        continue;
+                    }
+
+                    // Slot IS managed - add to removal list
                     equipmentItemIds.Add(item.Id!);
 
-                    if (slotIsManaged)
+                    // Log why this item is being removed
+                    if (snapshotSlotIds.Contains(slotId))
                     {
-                        if (snapshotSlotIds.Contains(slotId))
-                        {
-                            logger.Debug($"[KeepStartingGear-Server] Removing item from slot '{slotId}' (will be restored from snapshot): {item.Template}");
-                        }
-                        else if (emptySlotIds.Contains(slotId))
-                        {
-                            logger.Debug($"[KeepStartingGear-Server] Removing item from slot '{slotId}' (slot was empty at snapshot time - loot lost): {item.Template}");
-                        }
-                        else
-                        {
-                            // Slot is in IncludedSlots but wasn't in snapshot (maybe added after snapshot?)
-                            logger.Debug($"[KeepStartingGear-Server] Removing item from slot '{slotId}' (slot is managed but had no snapshot data): {item.Template}");
-                        }
+                        logger.Debug($"[KeepStartingGear-Server] Removing item from slot '{slotId}' (will be restored from snapshot): {item.Template}");
+                    }
+                    else if (emptySlotIds.Contains(slotId))
+                    {
+                        logger.Debug($"[KeepStartingGear-Server] Removing item from slot '{slotId}' (slot was empty at snapshot time - loot lost): {item.Template}");
                     }
                     else
                     {
-                        // This slot is NOT managed by the mod - normal death penalty applies
-                        // Items in this slot are LOST (not restored from snapshot)
-                        logger.Debug($"[KeepStartingGear-Server] Removing item from slot '{slotId}' (slot not protected - normal death penalty): {item.Template}");
+                        // Slot is in IncludedSlots but wasn't in snapshot (maybe added after snapshot?)
+                        logger.Debug($"[KeepStartingGear-Server] Removing item from slot '{slotId}' (slot is managed but had no snapshot data): {item.Template}");
                     }
                 }
             }
