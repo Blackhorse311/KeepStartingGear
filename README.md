@@ -5,6 +5,26 @@
 **License:** MIT
 **SPT Compatibility:** 4.0.x (tested on 4.0.8)
 
+---
+
+> ## **EXPERIMENTAL FIKA INTEGRATION**
+>
+> **You are viewing the `feature/fika-integration` branch.**
+>
+> This branch contains experimental FIKA (multiplayer) support that needs testing.
+>
+> | | |
+> |---|---|
+> | **Status** | Experimental - Needs Community Testing |
+> | **Testing Guide** | [FIKA_TESTING.md](FIKA_TESTING.md) |
+> | **Report Results** | [Create Test Report](https://github.com/Blackhorse311/KeepStartingGear/issues/new?template=fika_testing.yml) |
+> | **Stable Release** | [Switch to main branch](https://github.com/Blackhorse311/KeepStartingGear/tree/main) |
+>
+> **What's different:** This version hooks into FIKA's client-side death handling to restore
+> your inventory *before* FIKA serializes it. See [FIKA_TESTING.md](FIKA_TESTING.md) for details.
+
+---
+
 A mod for SPT that automatically protects your starting gear. Die in raid? Your equipment is restored. No more gear fear!
 
 ---
@@ -180,7 +200,7 @@ Settings are locked when a raid starts. Changing snapshot mode mid-raid shows a 
 ## Compatibility
 
 - **SPT Version**: 4.0.x (tested on 4.0.8)
-- **Fika**: Not tested - may not work in multiplayer scenarios
+- **Fika**: **Experimental support in this branch!** See [FIKA_TESTING.md](FIKA_TESTING.md)
 - **Other Mods**: Should be compatible with most mods, including mods that add custom items
 
 ### Mod Compatibility

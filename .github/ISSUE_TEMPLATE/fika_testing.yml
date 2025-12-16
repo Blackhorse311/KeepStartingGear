@@ -1,0 +1,189 @@
+name: FIKA Integration Test Report
+description: Report test results for the experimental FIKA integration
+title: "[FIKA Test]: "
+labels: ["fika-testing", "experimental"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## FIKA Integration Testing
+
+        Thanks for helping test the experimental FIKA integration! Your feedback is crucial for making this feature work reliably.
+
+        **Important:** This template is for the `feature/fika-integration` branch only.
+
+  - type: dropdown
+    id: test-result
+    attributes:
+      label: Overall Test Result
+      description: Did the FIKA integration work?
+      options:
+        - "✅ SUCCESS - Inventory was restored correctly"
+        - "⚠️ PARTIAL - Some items restored, some missing"
+        - "❌ FAILED - Inventory was NOT restored"
+        - "💥 CRASH - Game or mod crashed"
+    validations:
+      required: true
+
+  - type: input
+    id: spt-version
+    attributes:
+      label: SPT Version
+      description: What version of SPT are you running?
+      placeholder: "e.g., 4.0.8"
+    validations:
+      required: true
+
+  - type: input
+    id: fika-version
+    attributes:
+      label: FIKA Version
+      description: What version of FIKA are you using?
+      placeholder: "e.g., 2.3.1"
+    validations:
+      required: true
+
+  - type: input
+    id: ksg-version
+    attributes:
+      label: Keep Starting Gear Branch/Commit
+      description: Which commit are you testing? (run `git log -1 --oneline`)
+      placeholder: "e.g., 1af9fe7 or feature/fika-integration latest"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: player-role
+    attributes:
+      label: FIKA Role
+      description: Were you the host or a client?
+      options:
+        - Host
+        - Client
+        - Solo (FIKA installed but playing alone)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: snapshot-mode
+    attributes:
+      label: Snapshot Mode
+      description: What snapshot mode were you using?
+      options:
+        - Auto Only (default)
+        - Auto + Manual
+        - Manual Only
+    validations:
+      required: true
+
+  - type: textarea
+    id: test-scenario
+    attributes:
+      label: Test Scenario
+      description: Describe exactly what you did during testing
+      placeholder: |
+        1. Started raid on [map] as [host/client]
+        2. Snapshot was taken [automatically at raid start / manually with keybind]
+        3. Equipped gear: [describe main items - weapon, armor, etc.]
+        4. Died to [cause of death]
+        5. After raid ended, inventory was [restored/not restored/partially restored]
+    validations:
+      required: true
+
+  - type: textarea
+    id: items-status
+    attributes:
+      label: Item Restoration Details
+      description: Which items were restored correctly? Which were missing or wrong?
+      placeholder: |
+        Restored correctly:
+        - Primary weapon with attachments
+        - Armor vest
+        - etc.
+
+        Missing or wrong:
+        - Backpack contents were empty
+        - Helmet was wrong durability
+        - etc.
+    validations:
+      required: true
+
+  - type: textarea
+    id: fika-log-section
+    attributes:
+      label: FIKA Integration Log (REQUIRED)
+      description: |
+        **This is the most important part!**
+
+        Open `BepInEx/LogOutput.log` and search for `[FIKA-` to find all FIKA integration messages.
+        Copy everything from `[FIKA-DETECT]` through `[FIKA-RESTORER]` sections.
+
+        The log will show exactly what happened during detection, patching, and restoration.
+      placeholder: |
+        [Info   : KSG-FikaDetector] [FIKA-DETECT] Starting FIKA detection...
+        [Info   : KSG-FikaDetector] [FIKA-DETECT] SUCCESS! FIKA detected via BepInEx Chainloader!
+        ...
+        [Info   : KSG-FikaRestorer] [FIKA-RESTORER] Starting inventory restoration attempt
+        ...
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: full-client-log
+    attributes:
+      label: Full Client Log (Optional but helpful)
+      description: |
+        Upload or paste the full `BepInEx/LogOutput.log` file.
+        This helps us see the complete picture if something went wrong.
+      placeholder: "Drag & drop the LogOutput.log file here..."
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: server-log
+    attributes:
+      label: Server Log
+      description: |
+        Upload the SPT server log from `SPT/user/logs/` (most recent file).
+        This is especially important if client-side restoration failed and we need to check server-side fallback.
+      placeholder: "Drag & drop the server log file here..."
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: other-mods
+    attributes:
+      label: Other Mods Installed
+      description: List other mods you have installed alongside FIKA
+      placeholder: |
+        - SAIN
+        - Looting Bots
+        - etc.
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-notes
+    attributes:
+      label: Additional Notes
+      description: Any other observations, errors, or suggestions?
+      placeholder: "Anything else we should know..."
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission Checklist
+      options:
+        - label: I am testing the `feature/fika-integration` branch (not the main release)
+          required: true
+        - label: I have FIKA installed and it was working before adding this mod
+          required: true
+        - label: I have included the [FIKA-*] log messages from BepInEx/LogOutput.log
+          required: true
+        - label: I understand this is experimental and may not work perfectly
+          required: true
