@@ -34,6 +34,7 @@ using System;
 using BepInEx;
 using BepInEx.Logging;
 using Blackhorse311.KeepStartingGear.Configuration;
+using Blackhorse311.KeepStartingGear.Compatibility;
 using Blackhorse311.KeepStartingGear.Patches;
 using UnityEngine;
 
@@ -148,12 +149,15 @@ public class Plugin : BaseUnityPlugin
             }
 
             // Initialize services in dependency order
-            new Services.SnapshotManager();
+            var snapshotManager = new Services.SnapshotManager();
             new Services.InventoryService();
             new Services.ProfileService();
 
             // Enable Harmony patches to hook into game events
             PatchManager.EnablePatches();
+
+            // Initialize FIKA integration if FIKA is detected
+            InitializeFikaIntegration(snapshotManager);
 
             Logger.LogInfo($"Keep Starting Gear v{PluginVersion} loaded");
         }
@@ -189,5 +193,67 @@ public class Plugin : BaseUnityPlugin
             "Blackhorse311-KeepStartingGear",
             "snapshots"
         );
+    }
+
+    // ========================================================================
+    // FIKA Integration
+    // ========================================================================
+
+    /// <summary>
+    /// Initializes FIKA integration if FIKA is detected.
+    /// This hooks into FIKA's death handling to restore inventory client-side
+    /// BEFORE FIKA serializes the dead player's inventory.
+    /// </summary>
+    private void InitializeFikaIntegration(Services.SnapshotManager snapshotManager)
+    {
+        try
+        {
+            if (!FikaDetector.IsFikaInstalled)
+            {
+                Logger.LogDebug("FIKA not detected - using standard server-side restoration.");
+                return;
+            }
+
+            Logger.LogWarning("==============================================");
+            Logger.LogWarning("FIKA DETECTED - Enabling experimental FIKA integration!");
+            Logger.LogWarning("This feature is experimental and may not work correctly.");
+            Logger.LogWarning("==============================================");
+
+            // Create the FIKA snapshot restorer
+            var fikaRestorer = new FikaSnapshotRestorer(snapshotManager);
+
+            // Set up the death callback
+            FikaIntegration.OnPlayerDeathBeforeFika = (player) =>
+            {
+                Logger.LogInfo("[FIKA] Player death detected - attempting snapshot restoration...");
+                bool restored = fikaRestorer.TryRestoreInventory(player);
+
+                if (restored)
+                {
+                    Logger.LogInfo("[FIKA] Inventory restored from snapshot before FIKA save!");
+                }
+                else
+                {
+                    Logger.LogWarning("[FIKA] No snapshot available or restoration failed.");
+                }
+            };
+
+            // Initialize the FIKA integration patches
+            bool initialized = FikaIntegration.Initialize(PluginGuid);
+
+            if (initialized)
+            {
+                Logger.LogInfo("FIKA integration initialized successfully!");
+            }
+            else
+            {
+                Logger.LogWarning("FIKA integration failed to initialize - falling back to server-side restoration.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError($"Error initializing FIKA integration: {ex.Message}");
+            Logger.LogError("Falling back to standard server-side restoration.");
+        }
     }
 }
