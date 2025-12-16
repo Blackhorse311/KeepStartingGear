@@ -241,6 +241,19 @@ public class ItemUpd
     /// </summary>
     [JsonProperty("Tag")]
     public Tag Tag { get; set; }
+
+    /// <summary>
+    /// Dogtag metadata containing kill information.
+    /// Only present on dogtag items.
+    /// </summary>
+    [JsonProperty("Dogtag")]
+    public UpdDogtag Dogtag { get; set; }
+
+    /// <summary>
+    /// Key information for keys with limited uses.
+    /// </summary>
+    [JsonProperty("Key")]
+    public UpdKey Key { get; set; }
 }
 
 /// <summary>
@@ -338,4 +351,70 @@ public class Tag
     /// </summary>
     [JsonProperty("Color")]
     public int Color { get; set; }
+}
+
+/// <summary>
+/// Dogtag metadata containing information about a kill.
+/// Dogtags are special items that record who was killed, by whom, and when.
+/// </summary>
+/// <remarks>
+/// This metadata is critical for dogtags to be valid - without it,
+/// the dogtag appears "wiped" or invalid in the game.
+/// </remarks>
+public class UpdDogtag
+{
+    /// <summary>Account ID of the killed player</summary>
+    [JsonProperty("AccountId")]
+    public string AccountId { get; set; }
+
+    /// <summary>Profile ID of the killed player</summary>
+    [JsonProperty("ProfileId")]
+    public string ProfileId { get; set; }
+
+    /// <summary>Nickname of the killed player</summary>
+    [JsonProperty("Nickname")]
+    public string Nickname { get; set; }
+
+    /// <summary>Faction side of the killed player (Bear/Usec)</summary>
+    [JsonProperty("Side")]
+    public string Side { get; set; }
+
+    /// <summary>Level of the killed player at time of death</summary>
+    [JsonProperty("Level")]
+    public int Level { get; set; }
+
+    /// <summary>Time/date when the kill occurred (ISO 8601 format)</summary>
+    [JsonProperty("Time")]
+    public string Time { get; set; }
+
+    /// <summary>Status of the kill</summary>
+    [JsonProperty("Status")]
+    public string Status { get; set; }
+
+    /// <summary>Account ID of the killer</summary>
+    [JsonProperty("KillerAccountId")]
+    public string KillerAccountId { get; set; }
+
+    /// <summary>Profile ID of the killer</summary>
+    [JsonProperty("KillerProfileId")]
+    public string KillerProfileId { get; set; }
+
+    /// <summary>Nickname of the killer</summary>
+    [JsonProperty("KillerName")]
+    public string KillerName { get; set; }
+
+    /// <summary>Name of the weapon used for the kill</summary>
+    [JsonProperty("WeaponName")]
+    public string WeaponName { get; set; }
+}
+
+/// <summary>
+/// Key information for keys with limited uses.
+/// Some keys in Tarkov have a limited number of uses before they break.
+/// </summary>
+public class UpdKey
+{
+    /// <summary>Number of uses remaining on the key</summary>
+    [JsonProperty("NumberOfUsages")]
+    public int NumberOfUsages { get; set; }
 }

@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.4] - 2025-12-15
+
+### Fixed
+
+- **Dogtag Metadata Wiped on Restore**: Fixed critical issue where dogtags lost all their metadata (kill date, player level, killer info) when restored from snapshot. Dogtags now correctly preserve all metadata including AccountId, ProfileId, Nickname, Side, Level, Time, Status, KillerAccountId, KillerProfileId, KillerName, and WeaponName. (Reported by @calafex via GitHub #6)
+
+- **Surv12/CMS Uses Not Preserved**: Fixed issue where surgical kits (Surv12, CMS) were restored to full uses (9/9) instead of their captured state. The MedKitComponent capture now checks ALL items, not just those with "MedKit" in the type name. Surgical kits also use MedKitComponent for tracking remaining uses. (Reported by @calafex via GitHub #5)
+
+### Added
+
+- **Key Uses Tracking**: Added support for capturing and restoring key usage counts. Keys with limited uses now preserve their remaining uses in snapshots.
+
+### Contributors
+
+- **@calafex** - Reported dogtag metadata and Surv12 restoration issues
+
+### Compatibility
+
+- SPT 4.0.x (tested on 4.0.8)
+
+---
+
 ## [1.4.3] - 2025-12-14
 
 ### Fixed

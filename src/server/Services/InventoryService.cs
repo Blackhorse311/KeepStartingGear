@@ -1426,40 +1426,39 @@ public class InventoryService
             }
 
             // ================================================================
-            // Capture MedKit HP (IFAK, AFAK, Grizzly, etc.)
+            // Capture MedKit HP (IFAK, AFAK, Grizzly, Surv12, CMS, etc.)
             // EFT stores current HP as a field on MedKitComponent (not a property)
+            // This applies to ALL medical items including surgical kits
             // ================================================================
             try
             {
                 var itemType = item.GetType();
 
-                // Check if this is a MedKit item class
-                if (itemType.Name.Contains("MedKit"))
+                // Access the Components field to find MedKitComponent
+                // NOTE: Check ALL items, not just those with "MedKit" in name
+                // Surgical kits (Surv12, CMS) also use MedKitComponent but have different type names
+                var componentsField = itemType.GetField("Components", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                if (componentsField != null)
                 {
-                    // Access the Components field to find MedKitComponent
-                    var componentsField = itemType.GetField("Components", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-                    if (componentsField != null)
+                    var components = componentsField.GetValue(item) as System.Collections.IEnumerable;
+                    if (components != null)
                     {
-                        var components = componentsField.GetValue(item) as System.Collections.IEnumerable;
-                        if (components != null)
+                        foreach (var comp in components)
                         {
-                            foreach (var comp in components)
+                            if (comp != null && comp.GetType().Name.Contains("MedKit"))
                             {
-                                if (comp != null && comp.GetType().Name.Contains("MedKit"))
+                                // HpResource is a FIELD on the component, not a property
+                                var hpField = comp.GetType().GetField("HpResource", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                                if (hpField != null)
                                 {
-                                    // HpResource is a FIELD on the component, not a property
-                                    var hpField = comp.GetType().GetField("HpResource", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-                                    if (hpField != null)
+                                    var hp = hpField.GetValue(comp);
+                                    if (hp != null)
                                     {
-                                        var hp = hpField.GetValue(comp);
-                                        if (hp != null)
-                                        {
-                                            upd.MedKit = new UpdMedKit { HpResource = Convert.ToDouble(hp) };
-                                            Plugin.Log.LogDebug($"Captured MedKit HP: {hp} for {item.TemplateId}");
-                                        }
+                                        upd.MedKit = new UpdMedKit { HpResource = Convert.ToDouble(hp) };
+                                        Plugin.Log.LogDebug($"Captured MedKit HP: {hp} for {item.TemplateId} (Type: {itemType.Name})");
                                     }
-                                    break;
                                 }
+                                break;
                             }
                         }
                     }
@@ -1575,6 +1574,116 @@ public class InventoryService
                 }
             }
             catch { /* FoodDrink capture failed - not critical */ }
+
+            // ================================================================
+            // Capture Dogtag metadata (kill information)
+            // Dogtags store important data about who was killed, by whom, when
+            // Without this data, dogtags appear "wiped" or invalid
+            // ================================================================
+            try
+            {
+                var itemType = item.GetType();
+                var templateId = item.TemplateId.ToString();
+
+                // Dogtag template IDs: BEAR dogtag = 59f32bb586f774757e1e8442, USEC dogtag = 59f32c3b86f77472a31742f0
+                bool isDogtag = templateId == "59f32bb586f774757e1e8442" ||
+                               templateId == "59f32c3b86f77472a31742f0" ||
+                               itemType.Name.Contains("Dogtag");
+
+                if (isDogtag)
+                {
+                    // Try to find DogtagComponent in the item's components
+                    var componentsField = itemType.GetField("Components", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                    if (componentsField != null)
+                    {
+                        var components = componentsField.GetValue(item) as System.Collections.IEnumerable;
+                        if (components != null)
+                        {
+                            foreach (var comp in components)
+                            {
+                                if (comp != null && comp.GetType().Name.Contains("Dogtag"))
+                                {
+                                    var compType = comp.GetType();
+                                    upd.Dogtag = new UpdDogtag();
+
+                                    // Extract all dogtag properties via reflection
+                                    var accountIdField = compType.GetField("AccountId", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                                    var profileIdField = compType.GetField("ProfileId", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                                    var nicknameField = compType.GetField("Nickname", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                                    var sideField = compType.GetField("Side", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                                    var levelField = compType.GetField("Level", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                                    var timeField = compType.GetField("Time", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                                    var statusField = compType.GetField("Status", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                                    var killerAccountIdField = compType.GetField("KillerAccountId", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                                    var killerProfileIdField = compType.GetField("KillerProfileId", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                                    var killerNameField = compType.GetField("KillerName", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                                    var weaponNameField = compType.GetField("WeaponName", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+
+                                    upd.Dogtag.AccountId = accountIdField?.GetValue(comp)?.ToString();
+                                    upd.Dogtag.ProfileId = profileIdField?.GetValue(comp)?.ToString();
+                                    upd.Dogtag.Nickname = nicknameField?.GetValue(comp)?.ToString();
+                                    upd.Dogtag.Side = sideField?.GetValue(comp)?.ToString();
+                                    upd.Dogtag.Level = levelField != null ? Convert.ToInt32(levelField.GetValue(comp)) : 0;
+                                    upd.Dogtag.Time = timeField?.GetValue(comp)?.ToString();
+                                    upd.Dogtag.Status = statusField?.GetValue(comp)?.ToString();
+                                    upd.Dogtag.KillerAccountId = killerAccountIdField?.GetValue(comp)?.ToString();
+                                    upd.Dogtag.KillerProfileId = killerProfileIdField?.GetValue(comp)?.ToString();
+                                    upd.Dogtag.KillerName = killerNameField?.GetValue(comp)?.ToString();
+                                    upd.Dogtag.WeaponName = weaponNameField?.GetValue(comp)?.ToString();
+
+                                    Plugin.Log.LogDebug($"[DOGTAG] Captured dogtag metadata: {upd.Dogtag.Nickname} (Level {upd.Dogtag.Level}) killed by {upd.Dogtag.KillerName}");
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogWarning($"Dogtag capture failed for {item.TemplateId}: {ex.Message}");
+            }
+
+            // ================================================================
+            // Capture Key uses remaining
+            // Some keys have limited uses before they break
+            // ================================================================
+            try
+            {
+                var itemType = item.GetType();
+
+                // Check if this is a key item
+                if (itemType.Name.Contains("Key"))
+                {
+                    var componentsField = itemType.GetField("Components", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                    if (componentsField != null)
+                    {
+                        var components = componentsField.GetValue(item) as System.Collections.IEnumerable;
+                        if (components != null)
+                        {
+                            foreach (var comp in components)
+                            {
+                                if (comp != null && comp.GetType().Name.Contains("Key"))
+                                {
+                                    var numberOfUsagesField = comp.GetType().GetField("NumberOfUsages", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                                    if (numberOfUsagesField != null)
+                                    {
+                                        var uses = numberOfUsagesField.GetValue(comp);
+                                        if (uses != null)
+                                        {
+                                            upd.Key = new UpdKey { NumberOfUsages = Convert.ToInt32(uses) };
+                                            if (Settings.VerboseCaptureLogging?.Value == true)
+                                                Plugin.Log.LogDebug($"[KEY] Captured NumberOfUsages={uses} for {item.TemplateId}");
+                                        }
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch { /* Key capture failed - not critical */ }
 
             serialized.Upd = upd;
 
