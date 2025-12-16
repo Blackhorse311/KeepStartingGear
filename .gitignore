@@ -36,7 +36,7 @@ CONTEXT_FOR_*.md
 TESTING_*.md
 .*settings*/
 
-# Claude Code
+# IDE/Tool config directories
 .claude/
 
 # IDE working directories
