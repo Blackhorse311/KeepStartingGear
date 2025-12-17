@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.5] - 2025-12-16
+
+### Added
+
+- **Configurable Manual Snapshots**: Added "Max Manual Snapshots" setting (1-10, default: 1) that allows players to configure how many manual snapshots they can take per raid in Auto+Manual mode. This enables more flexibility for players who want to update their snapshot multiple times during a raid.
+
+- **Snapshot Progress Notifications**: Notifications now show progress when using multiple manual snapshots (e.g., "2/3 updates used") so players know how many updates remain.
+
+### Compatibility
+
+- SPT 4.0.x (tested on 4.0.8)
+
+---
+
+
 ## [1.4.4] - 2025-12-15
 
 ### Fixed

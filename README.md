@@ -1,6 +1,6 @@
 # Keep Starting Gear
 
-**Version:** 1.4.4
+**Version:** 1.4.5
 **Author:** Blackhorse311
 **License:** MIT
 **SPT Compatibility:** 4.0.x (tested on 4.0.8)
@@ -109,6 +109,7 @@ Config file location: `BepInEx/config/com.blackhorse311.keepstartinggear.cfg`
 | Setting | Default | Description |
 |---------|---------|-------------|
 | Snapshot Mode | Auto Only | When snapshots are taken (Auto Only / Auto+Manual / Manual Only) |
+| Max Manual Snapshots | 1 | Maximum manual snapshots per raid in Auto+Manual mode (1-10) |
 | Protect FIR Items | false | Exclude Found-in-Raid items from snapshots |
 | Exclude Insured Items | false | Let insurance handle insured items |
 | Re-Snapshot on Map Transfer | false | Take new snapshot when transferring maps |
