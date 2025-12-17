@@ -249,6 +249,23 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **SPT Team**: For the amazing SPT project
 - **BepInEx Team**: For the modding framework
 
+### Community Contributors
+
+Thanks to everyone who reported bugs and helped improve the mod:
+
+- **@Troyoza** - Reported hardcoded paths and character screen bounce issues
+- **@Wolthon** - Provided detailed logs for restoration flow debugging, reported grid contents capture issue
+- **@rSlade** - Early testing and feedback
+- **@20fpsguy** - Reported scav raid snapshot saving and false extraction detection
+- **@Recker** - Reported secure container deletion, ammo stacks, and empty slots issues
+- **@VeiledFury** - Reported release package structure issue
+- **@immortal_wombat** - Reported medkit, armor durability, and armor plates issues
+- **@Alcorsa** - Reported SPT 4.0.8 compatibility issue
+- **@calafex** - Reported dogtag metadata and Surv12 restoration issues
+- **@rimmyjob** - Reported secure container deletion when disabled (GitHub #4)
+- **@Matheus** - Reported gamma container disappearing during raid loading
+- **@wolthon** - Reported secure container loss with disabled setting
+
 ---
 
 ## Changelog
