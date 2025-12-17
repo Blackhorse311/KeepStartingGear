@@ -240,34 +240,58 @@ public class CustomInRaidHelper : InRaidHelper
                 }
             }
 
-            // Remove ALL equipment items (player died - all gear is lost except what's in snapshot)
+            // Remove equipment items from MANAGED slots only
+            // Items in non-managed slots (user disabled them) are PRESERVED
+            // This allows normal Tarkov behavior for disabled slots (e.g., secure container keeps items)
             var equipmentItemIds = new HashSet<string>();
 
             foreach (var item in pmcData.Inventory.Items.ToList())
             {
                 if (item.ParentId == profileEquipmentId && !string.IsNullOrEmpty(item.SlotId))
                 {
-                    // ALL equipment items are removed on death
-                    equipmentItemIds.Add(item.Id!);
-
-                    // Determine if this slot is managed by the mod (for logging purposes)
+                    // Determine if this slot is managed by the mod
+                    // A slot is managed if:
+                    // 1. It's in IncludedSlots (user enabled it), OR
+                    // 2. No IncludedSlots exist (legacy snapshot) AND it's in snapshotSlotIds or emptySlotIds
                     bool slotIsManaged;
                     if (includedSlotIds.Count > 0)
                     {
+                        // Modern snapshot: use IncludedSlots as authoritative source
                         slotIsManaged = includedSlotIds.Contains(item.SlotId);
                     }
                     else
                     {
+                        // Legacy snapshot: fall back to old behavior
                         slotIsManaged = snapshotSlotIds.Contains(item.SlotId) || emptySlotIds.Contains(item.SlotId);
                     }
 
-                    if (slotIsManaged)
+                    // Only remove items from MANAGED slots
+                    // - Managed slots: Items will be REMOVED then RESTORED from snapshot
+                    // - Non-managed slots: Items are PRESERVED (not touched by the mod)
+                    if (!slotIsManaged)
                     {
-                        _logger.Debug($"[KeepStartingGear-Server] Removing item from slot '{item.SlotId}' (will be restored from snapshot)");
+                        // This slot is NOT managed by the mod - PRESERVE it
+                        // Don't add to equipmentItemIds, so it won't be removed
+                        _logger.Debug($"[KeepStartingGear-Server] PRESERVING item in slot '{item.SlotId}' (slot not managed by mod): {item.Template}");
+                        continue;
+                    }
+
+                    // Slot IS managed - add to removal list
+                    equipmentItemIds.Add(item.Id!);
+
+                    // Log why this item is being removed
+                    if (snapshotSlotIds.Contains(item.SlotId))
+                    {
+                        _logger.Debug($"[KeepStartingGear-Server] Removing item from slot '{item.SlotId}' (will be restored from snapshot): {item.Template}");
+                    }
+                    else if (emptySlotIds.Contains(item.SlotId))
+                    {
+                        _logger.Debug($"[KeepStartingGear-Server] Removing item from slot '{item.SlotId}' (slot was empty at snapshot time - loot lost): {item.Template}");
                     }
                     else
                     {
-                        _logger.Debug($"[KeepStartingGear-Server] Removing item from slot '{item.SlotId}' (slot not protected - normal death penalty)");
+                        // Slot is in IncludedSlots but wasn't in snapshot (maybe added after snapshot?)
+                        _logger.Debug($"[KeepStartingGear-Server] Removing item from slot '{item.SlotId}' (slot is managed but had no snapshot data): {item.Template}");
                     }
                 }
             }

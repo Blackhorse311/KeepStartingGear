@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.6] - 2025-12-17
+
+### Fixed
+
+- **Secure Container Disappearing (SVM Compatibility)**: Fixed critical bug where secure containers (and other non-managed slots) were deleted when using mods that route through `CustomInRaidHelper` instead of `RaidEndInterceptor`. The slot preservation logic was missing from `CustomInRaidHelper.TryRestoreFromSnapshot()`. Now both code paths correctly preserve items in slots that are disabled in config (e.g., when "Restore Secure Container to Snapshot" is set to false). (Reported by @Matheus and @wolthon on Forge)
+
+### Technical
+
+- **Code Path Synchronization**: Both `RaidEndInterceptor.cs` and `CustomInRaidHelper.cs` now use identical slot management logic:
+  - Slots in `IncludedSlots` (enabled in config) → Items removed and restored from snapshot
+  - Slots NOT in `IncludedSlots` (disabled in config) → Items preserved (normal Tarkov behavior)
+  - Empty slots at snapshot time → Items removed on death (prevents keeping looted items)
+
+### Contributors
+
+- **@Matheus** - Reported gamma container disappearing during raid loading
+- **@wolthon** - Reported secure container loss with "Restore Secure Container to Snapshot = false"
+
+### Compatibility
+
+- SPT 4.0.x (tested on 4.0.8)
+
+---
+
 ## [1.4.5] - 2025-12-16
 
 ### Added
