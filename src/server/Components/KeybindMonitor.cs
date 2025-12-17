@@ -108,10 +108,10 @@ public class KeybindMonitor : MonoBehaviour
     private static bool _autoSnapshotTaken = false;
 
     /// <summary>
-    /// Tracks whether a manual snapshot has been taken this raid.
-    /// In AutoPlusManual mode, only one manual snapshot is allowed per raid.
+    /// Tracks how many manual snapshots have been taken this raid.
+    /// In AutoPlusManual mode, limited by MaxManualSnapshots setting.
     /// </summary>
-    private static bool _manualSnapshotTaken = false;
+    private static int _manualSnapshotCount = 0;
 
     /// <summary>
     /// Timestamp when the last manual snapshot was taken.
@@ -156,7 +156,7 @@ public class KeybindMonitor : MonoBehaviour
         _inRaid = true;
         _currentRaidSnapshotMap = null;
         _autoSnapshotTaken = false;
-        _manualSnapshotTaken = false;
+        _manualSnapshotCount = 0;
         _lastManualSnapshotTime = 0f;
         _currentSnapshotItemCount = 0;
 
@@ -173,7 +173,7 @@ public class KeybindMonitor : MonoBehaviour
             {
                 Plugin.Log.LogDebug("Re-Snapshot on Map Transfer is enabled - taking new snapshot");
                 // Reset tracking for new snapshot
-                _manualSnapshotTaken = false;
+                _manualSnapshotCount = 0;
                 Invoke(nameof(TakeAutoSnapshot), 0.5f);
             }
             else
@@ -309,7 +309,7 @@ public class KeybindMonitor : MonoBehaviour
         _inRaid = false;
         _currentRaidSnapshotMap = null;
         _autoSnapshotTaken = false;
-        _manualSnapshotTaken = false;
+        _manualSnapshotCount = 0;
         _lastManualSnapshotTime = 0f;
         _currentSnapshotItemCount = 0;
         Plugin.Log.LogDebug("Raid state reset - all snapshot tracking cleared");
@@ -429,10 +429,11 @@ public class KeybindMonitor : MonoBehaviour
             // ================================================================
             // AutoPlusManual Mode: Check if manual snapshot already taken
             // ================================================================
-            if (mode == SnapshotMode.AutoPlusManual && inRaid && _manualSnapshotTaken)
+            int maxSnapshots = Settings.MaxManualSnapshots.Value;
+            if (mode == SnapshotMode.AutoPlusManual && inRaid && _manualSnapshotCount >= maxSnapshots)
             {
-                Plugin.Log.LogDebug("Manual snapshot limit reached - one per raid in Auto+Manual mode");
-                NotificationOverlay.ShowWarning("Manual Snapshot Limit!\nOne update allowed per raid");
+                Plugin.Log.LogDebug($"Manual snapshot limit reached - {_manualSnapshotCount}/{maxSnapshots} taken");
+                NotificationOverlay.ShowWarning($"Manual Snapshot Limit!\n{maxSnapshots} update{(maxSnapshots > 1 ? "s" : "")} allowed per raid");
                 return;
             }
 
@@ -487,7 +488,7 @@ public class KeybindMonitor : MonoBehaviour
                     if (inRaid)
                     {
                         _currentRaidSnapshotMap = location;
-                        _manualSnapshotTaken = true;
+                        _manualSnapshotCount++;
                         _lastManualSnapshotTime = Time.time;
 
                         // Calculate difference from auto-snapshot
@@ -498,11 +499,13 @@ public class KeybindMonitor : MonoBehaviour
                         if (isOverwriting && diff != 0)
                         {
                             string diffStr = diff > 0 ? $"+{diff}" : diff.ToString();
-                            NotificationOverlay.ShowSuccess($"Snapshot Updated!\n{snapshot.Items.Count} items ({diffStr} from start)");
+                            string progressInfo = mode == SnapshotMode.AutoPlusManual ? $"\n{_manualSnapshotCount}/{maxSnapshots} updates used" : "";
+                            NotificationOverlay.ShowSuccess($"Snapshot Updated!\n{snapshot.Items.Count} items ({diffStr} from start){progressInfo}");
                         }
                         else
                         {
-                            NotificationOverlay.ShowSuccess($"Snapshot Saved!\n{snapshot.Items.Count} items captured");
+                            string progressInfo2 = mode == SnapshotMode.AutoPlusManual ? $"\n{_manualSnapshotCount}/{maxSnapshots} updates used" : "";
+                            NotificationOverlay.ShowSuccess($"Snapshot Saved!\n{snapshot.Items.Count} items captured{progressInfo2}");
                         }
                     }
                     else
