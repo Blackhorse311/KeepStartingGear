@@ -1,9 +1,24 @@
 name: Build and Release
 
+# ============================================================================
+# GitHub Actions Workflow for Keep Starting Gear Releases
+# ============================================================================
+# This workflow triggers on version tags (e.g., v1.4.7) and creates a release.
+#
+# IMPORTANT: Before pushing a tag, you must:
+# 1. Build the CLIENT mod locally (requires SPT/EFT DLLs)
+# 2. Commit the built DLL in bin/BepInEx/plugins/Blackhorse311-KeepStartingGear/
+# 3. Push the tag to trigger this workflow
+#
+# The SERVER mod is built by GitHub Actions using NuGet packages.
+# The CLIENT mod is included from the pre-built bin/ folder because
+# it requires EFT game DLLs that aren't available on GitHub runners.
+# ============================================================================
+
 on:
   push:
     tags:
-      - 'v*'  # Triggers on version tags like v1.4.1
+      - 'v*'  # Triggers on version tags like v1.4.7
 
 jobs:
   build:
@@ -18,24 +33,36 @@ jobs:
       with:
         dotnet-version: '9.0.x'
 
-    - name: Restore dependencies (Client)
-      run: dotnet restore src/server/Blackhorse311.KeepStartingGear.csproj
-
+    # Only build the server mod - it uses NuGet packages for SPT references
+    # The client mod requires EFT DLLs and must be built locally
     - name: Restore dependencies (Server)
       run: dotnet restore src/servermod/Blackhorse311.KeepStartingGear.Server.csproj
 
-    - name: Build Client Mod
-      run: dotnet build src/server/Blackhorse311.KeepStartingGear.csproj --configuration Release --no-restore
-
     - name: Build Server Mod
       run: dotnet build src/servermod/Blackhorse311.KeepStartingGear.Server.csproj --configuration Release --no-restore
+
+    - name: Verify client DLL exists
+      run: |
+        if [ ! -f "bin/BepInEx/plugins/Blackhorse311-KeepStartingGear/Blackhorse311.KeepStartingGear.dll" ]; then
+          echo "ERROR: Client DLL not found in bin/BepInEx/plugins/Blackhorse311-KeepStartingGear/"
+          echo "You must build the client mod locally and commit the DLL before creating a release."
+          exit 1
+        fi
+        echo "Client DLL found - proceeding with release"
+      shell: bash
 
     - name: Create release structure
       run: |
         mkdir -p release/BepInEx/plugins/Blackhorse311-KeepStartingGear
         mkdir -p release/user/mods/Blackhorse311-KeepStartingGear
+
+        # Client mod - use pre-built DLL from bin folder
         cp bin/BepInEx/plugins/Blackhorse311-KeepStartingGear/Blackhorse311.KeepStartingGear.dll release/BepInEx/plugins/Blackhorse311-KeepStartingGear/
+
+        # Server mod - use freshly built DLL
         cp src/servermod/bin/Release/net9.0/Blackhorse311.KeepStartingGear.Server.dll release/user/mods/Blackhorse311-KeepStartingGear/
+
+        # Documentation
         cp LICENSE release/
         cp README.md release/
         cp CHANGELOG.md release/

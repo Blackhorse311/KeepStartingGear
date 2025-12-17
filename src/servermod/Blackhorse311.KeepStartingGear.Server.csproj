@@ -5,7 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <OutputType>Library</OutputType>
-    <Version>1.4.4</Version>
+    <Version>1.4.7</Version>
     <Authors>Blackhorse311</Authors>
     <Description>Server-side component for Keep Starting Gear mod - handles inventory restoration on raid end</Description>
     <!-- Suppress CS9107: Primary constructor parameter captured warning (intentional pattern) -->
@@ -20,10 +20,10 @@
     <PackageReference Include="SPTarkov.Reflection" Version="4.0.8" />
   </ItemGroup>
 
-  <!-- Copy output to SPT user/mods folder -->
-  <Target Name="CopyToMods" AfterTargets="Build">
+  <!-- Copy output to SPT user/mods folder (only when SPT_PATH is set) -->
+  <Target Name="CopyToMods" AfterTargets="Build" Condition="'$(SptPath)' != '' AND Exists('$(UserModsPath)')">
     <PropertyGroup>
-      <ModOutputDir>H:\SPT\SPT\user\mods\Blackhorse311-KeepStartingGear</ModOutputDir>
+      <ModOutputDir>$(UserModsPath)\$(ModFolderName)</ModOutputDir>
     </PropertyGroup>
     <MakeDir Directories="$(ModOutputDir)" />
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ModOutputDir)" />

@@ -1287,48 +1287,77 @@ public class InventoryService
                     var addressType = item.CurrentAddress.GetType();
                     Plugin.Log.LogDebug($"[LOCATION] Item {item.TemplateId} address type: {addressType.Name}");
 
-                    var locationProp = addressType.GetProperty("LocationInGrid")
-                                    ?? addressType.GetProperty("Location");
+                    // GClass3393 (base class for grid addresses) has LocationInGrid as a PUBLIC FIELD, not property!
+                    // Try fields first, then properties for compatibility
+                    object location = null;
 
-                    if (locationProp != null)
+                    var locationField = addressType.GetField("LocationInGrid")
+                                     ?? addressType.GetField("Location");
+                    if (locationField != null)
                     {
-                        var location = locationProp.GetValue(item.CurrentAddress);
-                        if (location != null)
+                        location = locationField.GetValue(item.CurrentAddress);
+                    }
+                    else
+                    {
+                        var locationProp = addressType.GetProperty("LocationInGrid")
+                                        ?? addressType.GetProperty("Location");
+                        if (locationProp != null)
                         {
-                            Plugin.Log.LogDebug($"[LOCATION] Found location object for {item.TemplateId}: {location.GetType().Name}");
-                            var locationType = location.GetType();
+                            location = locationProp.GetValue(item.CurrentAddress);
+                        }
+                    }
 
-                            // Try both lowercase and uppercase property names
-                            var xProp = locationType.GetProperty("x") ?? locationType.GetProperty("X");
-                            var yProp = locationType.GetProperty("y") ?? locationType.GetProperty("Y");
-                            var rProp = locationType.GetProperty("r") ?? locationType.GetProperty("R");
+                    if (location != null)
+                    {
+                        Plugin.Log.LogDebug($"[LOCATION] Found location object for {item.TemplateId}: {location.GetType().Name}");
+                        var locationType = location.GetType();
 
-                            var x = xProp?.GetValue(location);
-                            var y = yProp?.GetValue(location);
-                            var r = rProp?.GetValue(location);
+                        // Try both properties and fields (LocationInGrid uses public fields, not properties)
+                        object x = null, y = null, r = null;
 
-                            if (x != null && y != null)
+                        // Try properties first
+                        var xProp = locationType.GetProperty("x") ?? locationType.GetProperty("X");
+                        var yProp = locationType.GetProperty("y") ?? locationType.GetProperty("Y");
+                        var rProp = locationType.GetProperty("r") ?? locationType.GetProperty("R");
+
+                        if (xProp != null) x = xProp.GetValue(location);
+                        if (yProp != null) y = yProp.GetValue(location);
+                        if (rProp != null) r = rProp.GetValue(location);
+
+                        // Fall back to fields if properties not found (LocationInGrid uses public fields)
+                        if (x == null)
+                        {
+                            var xField = locationType.GetField("x") ?? locationType.GetField("X");
+                            if (xField != null) x = xField.GetValue(location);
+                        }
+                        if (y == null)
+                        {
+                            var yField = locationType.GetField("y") ?? locationType.GetField("Y");
+                            if (yField != null) y = yField.GetValue(location);
+                        }
+                        if (r == null)
+                        {
+                            var rField = locationType.GetField("r") ?? locationType.GetField("R");
+                            if (rField != null) r = rField.GetValue(location);
+                        }
+
+                        if (x != null && y != null)
+                        {
+                            serialized.Location = new ItemLocation
                             {
-                                serialized.Location = new ItemLocation
-                                {
-                                    X = Convert.ToInt32(x),
-                                    Y = Convert.ToInt32(y),
-                                    R = r != null ? Convert.ToInt32(r) : 0,
-                                    IsSearched = true
-                                };
+                                X = Convert.ToInt32(x),
+                                Y = Convert.ToInt32(y),
+                                R = r != null ? Convert.ToInt32(r) : 0,
+                                IsSearched = true
+                            };
 
-                                // Log location capture only in verbose mode
-                                if (Settings.VerboseCaptureLogging?.Value == true)
-                                    Plugin.Log.LogDebug($"[LOCATION] Captured grid position for {item.TemplateId}: X={serialized.Location.X}, Y={serialized.Location.Y}, R={serialized.Location.R}");
-                            }
-                            else
-                            {
-                                Plugin.Log.LogWarning($"[LOCATION] Location object found but X or Y is null for {item.TemplateId}: x={x}, y={y}");
-                            }
+                            // Log location capture only in verbose mode
+                            if (Settings.VerboseCaptureLogging?.Value == true)
+                                Plugin.Log.LogDebug($"[LOCATION] Captured grid position for {item.TemplateId}: X={serialized.Location.X}, Y={serialized.Location.Y}, R={serialized.Location.R}");
                         }
                         else
                         {
-                            Plugin.Log.LogDebug($"[LOCATION] LocationInGrid/Location property exists but returned null for {item.TemplateId}");
+                            Plugin.Log.LogWarning($"[LOCATION] Location object found but X or Y is null for {item.TemplateId}: x={x}, y={y}");
                         }
                     }
                     else
@@ -1344,7 +1373,7 @@ public class InventoryService
                             var props = addressType.GetProperties().Select(p => $"{p.Name}:{p.PropertyType.Name}").ToArray();
                             Plugin.Log.LogDebug($"[LOCATION] Available properties on {addressType.Name}: {string.Join(", ", props)}");
 
-                            // Also try to find any property with "Location" in the name or that returns a struct/class with x/y
+                            // Also try to find any property/field with "Location" in the name or that returns a struct/class with x/y
                             foreach (var prop in addressType.GetProperties())
                             {
                                 try
@@ -1353,17 +1382,40 @@ public class InventoryService
                                     if (val != null)
                                     {
                                         var valType = val.GetType();
+
+                                        // Try properties first, then fields (LocationInGrid uses public fields)
+                                        object x = null, y = null, r = null;
+
                                         var xProp = valType.GetProperty("x") ?? valType.GetProperty("X");
                                         var yProp = valType.GetProperty("y") ?? valType.GetProperty("Y");
-                                        if (xProp != null && yProp != null)
+                                        var rProp = valType.GetProperty("r") ?? valType.GetProperty("R");
+
+                                        if (xProp != null) x = xProp.GetValue(val);
+                                        if (yProp != null) y = yProp.GetValue(val);
+                                        if (rProp != null) r = rProp.GetValue(val);
+
+                                        // Fall back to fields
+                                        if (x == null)
                                         {
-                                            var x = xProp.GetValue(val);
-                                            var y = yProp.GetValue(val);
+                                            var xField = valType.GetField("x") ?? valType.GetField("X");
+                                            if (xField != null) x = xField.GetValue(val);
+                                        }
+                                        if (y == null)
+                                        {
+                                            var yField = valType.GetField("y") ?? valType.GetField("Y");
+                                            if (yField != null) y = yField.GetValue(val);
+                                        }
+                                        if (r == null)
+                                        {
+                                            var rField = valType.GetField("r") ?? valType.GetField("R");
+                                            if (rField != null) r = rField.GetValue(val);
+                                        }
+
+                                        if (x != null && y != null)
+                                        {
                                             Plugin.Log.LogDebug($"[LOCATION] FOUND! Property '{prop.Name}' has x={x}, y={y}");
 
                                             // Use this location!
-                                            var rProp = valType.GetProperty("r") ?? valType.GetProperty("R");
-                                            var r = rProp?.GetValue(val);
                                             serialized.Location = new ItemLocation
                                             {
                                                 X = Convert.ToInt32(x),

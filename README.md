@@ -1,6 +1,6 @@
 # Keep Starting Gear
 
-**Version:** 1.4.6
+**Version:** 1.4.7
 **Author:** Blackhorse311
 **License:** MIT
 **SPT Compatibility:** 4.0.x (tested on 4.0.8)
@@ -265,6 +265,7 @@ Thanks to everyone who reported bugs and helped improve the mod:
 - **@rimmyjob** - Reported secure container deletion when disabled (GitHub #4)
 - **@Matheus** - Reported gamma container disappearing during raid loading
 - **@wolthon** - Reported secure container loss with disabled setting
+- **@zezaovlr** - Reported ammo/grenade restoration issue
 
 ---
 

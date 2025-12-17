@@ -1,9 +1,22 @@
 # Build outputs
-bin/
 obj/
-*.dll
 *.pdb
 *.exe
+
+# Ignore most of bin/ but keep the client DLL for GitHub Actions releases
+# The client mod requires EFT DLLs to build, so we commit the pre-built DLL
+bin/*
+!bin/BepInEx/
+bin/BepInEx/*
+!bin/BepInEx/plugins/
+bin/BepInEx/plugins/*
+!bin/BepInEx/plugins/Blackhorse311-KeepStartingGear/
+bin/BepInEx/plugins/Blackhorse311-KeepStartingGear/*
+!bin/BepInEx/plugins/Blackhorse311-KeepStartingGear/Blackhorse311.KeepStartingGear.dll
+
+# Ignore server mod build output (built by GitHub Actions via NuGet)
+src/servermod/bin/
+src/servermod/obj/
 
 # Visual Studio
 .vs/
@@ -36,7 +49,7 @@ CONTEXT_FOR_*.md
 TESTING_*.md
 .*settings*/
 
-# Claude Code
+# Development tools
 .claude/
 
 # IDE working directories

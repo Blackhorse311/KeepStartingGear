@@ -1,0 +1,42 @@
+<Project>
+  <!--
+    Shared build properties for Keep Starting Gear mod projects.
+
+    SPT_PATH Configuration:
+    =======================
+    Set the SPT_PATH environment variable to your SPT installation folder.
+
+    Windows (PowerShell):
+      $env:SPT_PATH = "C:\Games\SPT"
+
+    Windows (Command Prompt):
+      set SPT_PATH=C:\Games\SPT
+
+    Windows (Permanent - System Environment Variables):
+      1. Open System Properties > Advanced > Environment Variables
+      2. Add new User variable: SPT_PATH = C:\Games\SPT
+
+    If SPT_PATH is not set, the build will still succeed but:
+    - Reference DLLs must exist in the expected locations
+    - Post-build copy steps will be skipped
+
+    For CI/GitHub Actions:
+    - References are resolved via NuGet packages (server mod)
+    - Client mod references are expected in standard locations
+    - Post-build copy steps are skipped when SPT_PATH doesn't exist
+  -->
+
+  <PropertyGroup>
+    <!-- Read SPT_PATH from environment variable, with fallback for local development -->
+    <SptPath Condition="'$(SptPath)' == ''">$(SPT_PATH)</SptPath>
+
+    <!-- Common paths derived from SPT installation -->
+    <BepInExPath Condition="'$(SptPath)' != ''">$(SptPath)\BepInEx</BepInExPath>
+    <ManagedPath Condition="'$(SptPath)' != ''">$(SptPath)\EscapeFromTarkov_Data\Managed</ManagedPath>
+    <SptPluginsPath Condition="'$(SptPath)' != ''">$(SptPath)\BepInEx\plugins\spt</SptPluginsPath>
+    <UserModsPath Condition="'$(SptPath)' != ''">$(SptPath)\SPT\user\mods</UserModsPath>
+
+    <!-- Mod output folder name -->
+    <ModFolderName>Blackhorse311-KeepStartingGear</ModFolderName>
+  </PropertyGroup>
+</Project>

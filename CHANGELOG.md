@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.7] - 2025-12-17
+
+### Fixed
+
+- **Ammo and Grenades Not Restoring**: Fixed critical bug where ammunition in pockets/vests and grenades were not being captured in snapshots. The LocationInGrid data (x, y, rotation) was not being read correctly because SPT 4.0.8 uses public **fields** instead of properties. Changed reflection access from `GetProperty()` to `GetField()` for LocationInGrid and its x/y/r members.
+
+### Technical
+
+- **Reflection Field Access**: EFT's `GClass3393` (grid address base class) stores `LocationInGrid` as a public field, not a property. The `LocationInGrid` struct also uses public fields for `x`, `y`, and `r` (rotation). Updated `InventoryService.cs` to try `GetField()` first, then fall back to `GetProperty()` for compatibility.
+
+- **Build System Improvements**: Added `Directory.Build.props` for flexible SPT path configuration. Developers can now set the `SPT_PATH` environment variable instead of editing csproj files.
+
+### Contributors
+
+- **@zezaovlr** - Reported ammo/grenade restoration issue via GitHub
+
+### Compatibility
+
+- SPT 4.0.x (tested on 4.0.8)
+
+---
+
 ## [1.4.6] - 2025-12-17
 
 ### Fixed
