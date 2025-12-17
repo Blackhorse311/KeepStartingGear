@@ -209,6 +209,13 @@ public static class Settings
     /// </summary>
     public static ConfigEntry<bool> ExcludeInsuredItems { get; private set; }
 
+    /// <summary>
+    /// Maximum number of manual snapshots allowed per raid in AutoPlusManual mode.
+    /// Allows players to update their snapshot multiple times during a raid.
+    /// Default: 1 (original behavior)
+    /// </summary>
+    public static ConfigEntry<int> MaxManualSnapshots { get; private set; }
+
     #endregion
 
     // ========================================================================
@@ -489,6 +496,18 @@ public static class Settings
                 "When enabled, insured items will NOT be included in snapshots.\n" +
                 "This lets insurance handle those items normally instead of restoring them.",
                 null,
+                new ConfigurationManagerAttributes { Order = order-- }
+            )
+        );
+
+        MaxManualSnapshots = config.Bind(
+            CategorySnapshot,
+            "Max Manual Snapshots",
+            1,
+            new ConfigDescription(
+                "Maximum number of manual snapshots allowed per raid in Auto+Manual mode.\n" +
+                "Set to 1 for original behavior, or higher to allow multiple snapshot updates.",
+                new AcceptableValueRange<int>(1, 10),
                 new ConfigurationManagerAttributes { Order = order-- }
             )
         );
