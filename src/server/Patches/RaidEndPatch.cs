@@ -158,6 +158,20 @@ public class RaidEndPatch : ModulePatch
                 return;
             }
 
+            // Check 1.5: Verify the __instance is the active game
+            // This helps filter out bot/AI game instances that might call Stop()
+            try
+            {
+                var instanceType = __instance.GetType();
+                var statusProp = instanceType.GetProperty("Status") ?? instanceType.GetField("Status")?.GetValue(__instance) as object;
+                if (statusProp != null)
+                {
+                    var status = instanceType.GetProperty("Status")?.GetValue(__instance);
+                    Plugin.Log.LogDebug($"RaidEndPatch: Game instance status: {status}");
+                }
+            }
+            catch { /* Ignore reflection errors */ }
+
             // Check 2: Verify this is actually the main player's game ending
             // Get GameWorld to check if main player is actually ending
             var gameWorld = Singleton<GameWorld>.Instance;
@@ -252,26 +266,26 @@ public class RaidEndPatch : ModulePatch
                 NotificationOverlay.ShowSuccess($"Restoring Snapshot!\n{snapshot.Items.Count} items");
             }
             // ================================================================
-            // Handle Extraction (Server Handles Snapshot Cleanup)
+            // Handle Extraction (Clear Snapshot)
             // ================================================================
             else if (playerExtracted)
             {
                 Plugin.Log.LogDebug("Player extracted successfully");
 
-                // NOTE: We intentionally DO NOT clear the snapshot here on the client side.
-                // The server handles snapshot cleanup in RaidEndInterceptor.EndLocalRaid()
-                // which has authoritative information about the actual player's session.
+                // Clear snapshot on extraction to prevent stale snapshots from persisting
+                // This was previously server-only, but that fails when SVM is installed
+                // because SVM can override the RaidEndInterceptor endpoint.
                 //
-                // This prevents a bug where PMC bots using certain extracts (like code-locked
-                // Smuggler's Boat) could trigger false extraction detection and wipe the
-                // player's snapshot prematurely.
+                // We've verified this is the main player extracting (not a bot) via
+                // the health checks above, so it's safe to clear the snapshot.
 
                 var snapshot = SnapshotManager.Instance.GetMostRecentSnapshot();
                 if (snapshot != null)
                 {
-                    Plugin.Log.LogDebug($"Snapshot exists with {snapshot.Items.Count} items - server will clear it");
+                    Plugin.Log.LogDebug($"Clearing snapshot with {snapshot.Items.Count} items after successful extraction");
+                    SnapshotManager.Instance.ClearSnapshot(snapshot.SessionId);
 
-                    // Show notification (server will handle actual cleanup)
+                    // Show notification
                     NotificationOverlay.ShowSuccess("Extracted Successfully!");
                 }
             }

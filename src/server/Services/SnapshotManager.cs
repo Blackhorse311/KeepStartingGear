@@ -167,6 +167,37 @@ public class SnapshotManager
                 return false;
             }
 
+            // CRITICAL: Deduplicate items to prevent "An item with the same key has already been added" crash
+            // This can happen if the capture logic accidentally adds the same item twice
+            var seenIds = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var deduplicatedItems = new System.Collections.Generic.List<SerializedItem>();
+            int duplicatesRemoved = 0;
+
+            foreach (var item in snapshot.Items)
+            {
+                if (string.IsNullOrEmpty(item.Id))
+                {
+                    Plugin.Log.LogWarning("Skipping item with null/empty ID during save");
+                    continue;
+                }
+
+                if (seenIds.Contains(item.Id))
+                {
+                    Plugin.Log.LogWarning($"[DUPLICATE REMOVED] Duplicate item ID detected in snapshot: {item.Id} (Tpl={item.Tpl})");
+                    duplicatesRemoved++;
+                    continue;
+                }
+
+                seenIds.Add(item.Id);
+                deduplicatedItems.Add(item);
+            }
+
+            if (duplicatesRemoved > 0)
+            {
+                Plugin.Log.LogWarning($"[SNAPSHOT] Removed {duplicatesRemoved} duplicate item(s) from snapshot before saving");
+                snapshot.Items = deduplicatedItems;
+            }
+
             string filePath = GetSnapshotFilePath(snapshot.SessionId);
 
             // Configure JSON serialization settings

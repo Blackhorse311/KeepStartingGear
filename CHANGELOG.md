@@ -5,6 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.8] - 2025-12-23
+
+### Fixed
+
+- **Version Mismatch**: Fixed server log showing "v1.3.0" instead of actual version. Server, client, and metadata now all report consistent version numbers. (Reported by @Toireht, @L4Z3RB1)
+
+- **SVM Folder Detection**: Fixed SVM (Server Value Modifier) not being detected when using default folder name `[SVM] Server Value Modifier`. Brackets in folder names are now stripped before keyword matching. (Reported by @andryi2509)
+
+- **Duplicate Item Crash Prevention**: Added deduplication at snapshot save time to prevent "An item with the same key has already been added" crashes. If duplicate item IDs are detected in a snapshot, they are removed with a warning logged. (Reported by @trollcze, @cykablyat, @andryi2509, @benadryldealer)
+
+- **Snapshot Not Cleared on Extract**: Fixed old snapshots persisting after successful extractions when SVM is installed. The client now clears snapshots on extraction as a fallback when the server-side cleanup doesn't run. (Reported by @kurdamir2)
+
+- **Secure Container Items From Non-Managed Slots**: Fixed items from disabled slots (like SecuredContainer when disabled) being incorrectly added from snapshots. The restoration logic now traces each item's root slot and skips items from non-managed slots, preventing duplicates and preserving disabled slot contents. (Reported by @zezika, @Matheus, @Bert)
+
+### Technical
+
+- **Root Slot Tracing**: Both `RaidEndInterceptor.cs` and `CustomInRaidHelper.cs` now build a map of snapshot items to their root equipment slot. Items are only restored if their root slot is in the `IncludedSlots` list.
+
+- **Client-Side Snapshot Cleanup**: `RaidEndPatch.cs` now clears snapshots on successful extraction, providing redundancy when server-side cleanup fails due to mod conflicts.
+
+- **Snapshot Deduplication**: `SnapshotManager.SaveSnapshot()` now validates and deduplicates items before writing to disk, preventing corrupted snapshots.
+
+### Contributors
+
+- **@Toireht** - Reported version mismatch issue
+- **@L4Z3RB1** - Reported version mismatch via GitHub #11
+- **@kurdamir2** - Reported snapshot not clearing after extraction
+- **@andryi2509** - Reported SVM detection and settings issues
+- **@trollcze, @cykablyat, @benadryldealer** - Reported duplicate item crashes
+- **@zezika, @Matheus, @Bert** - Reported secure container issues
+
+### Compatibility
+
+- SPT 4.0.x (tested on 4.0.8)
+
+---
+
 ## [1.4.7] - 2025-12-17
 
 ### Fixed

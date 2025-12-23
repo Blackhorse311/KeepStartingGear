@@ -80,10 +80,15 @@ public class KeepStartingGearMod(ISptLogger<KeepStartingGearMod> logger) : IOnLo
     /// </summary>
     private const string ModFolderName = "Blackhorse311-KeepStartingGear";
 
+    /// <summary>
+    /// Current mod version - must match ModMetadata.Version and client Plugin.PluginVersion
+    /// </summary>
+    private const string ModVersion = "1.4.8";
+
     public Task OnLoad()
     {
         logger.Info("[KeepStartingGear-Server] ============================================");
-        logger.Info("[KeepStartingGear-Server] Keep Starting Gear v1.3.0 - Server Component");
+        logger.Info($"[KeepStartingGear-Server] Keep Starting Gear v{ModVersion} - Server Component");
         logger.Info("[KeepStartingGear-Server] ============================================");
         logger.Info("[KeepStartingGear-Server] Inventory restoration service ready.");
 
@@ -119,15 +124,19 @@ public class KeepStartingGearMod(ISptLogger<KeepStartingGearMod> logger) : IOnLo
             // Check for SVM (Server Value Modifier)
             // The default folder name is "[SVM] Server Value Modifier" but users may rename it
             // We check all directories for any that contain "SVM" (case-insensitive)
+            // Note: We strip brackets [] from folder names before checking to handle "[SVM]" format
             string[] svmKeywords = { "svm", "servervaluemodifier", "server value modifier" };
 
             foreach (var directory in System.IO.Directory.GetDirectories(modsDirectory))
             {
                 string folderName = System.IO.Path.GetFileName(directory).ToLowerInvariant();
 
+                // Strip brackets to handle folder names like "[SVM] Server Value Modifier"
+                string normalizedFolderName = folderName.Replace("[", "").Replace("]", "");
+
                 foreach (var keyword in svmKeywords)
                 {
-                    if (folderName.Contains(keyword))
+                    if (normalizedFolderName.Contains(keyword))
                     {
                         logger.Info($"[KeepStartingGear-Server] SVM (Server Value Modifier) detected: {System.IO.Path.GetFileName(directory)}");
                         logger.Info("[KeepStartingGear-Server] Using Harmony patching for SVM compatibility.");

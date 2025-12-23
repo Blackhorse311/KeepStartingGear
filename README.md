@@ -1,6 +1,6 @@
 # Keep Starting Gear
 
-**Version:** 1.4.7
+**Version:** 1.4.8
 **Author:** Blackhorse311
 **License:** MIT
 **SPT Compatibility:** 4.0.x (tested on 4.0.8)
@@ -188,12 +188,53 @@ Settings are locked when a raid starts. Changing snapshot mode mid-raid shows a 
 
 | Mod | Status | Notes |
 |-----|--------|-------|
-| **SVM (Server Value Modifier)** | **Partially Compatible** | Works alongside SVM with exceptions noted below. |
+| **SVM (Server Value Modifier)** | **Compatible with Required Settings** | See detailed instructions below |
 
-**SVM Compatibility Details:**
-- **Softcore Mode**: Incompatible - will conflict with KSG's gear restoration. Disable this if using KSG.
-- **Safe Exit**: Incompatible - interferes with KSG's death detection. Disable this if using KSG.
-- **Other SVM settings**: Use at your own risk. Most should work fine, but gear-related settings may produce unexpected results when combined with KSG.
+---
+
+### ⚠️ SVM (Server Value Modifier) Compatibility - IMPORTANT
+
+If you use SVM alongside Keep Starting Gear, you **MUST** configure SVM correctly or you will experience issues like:
+- Gear not restoring on death
+- Duplicate items in inventory
+- Profile corruption
+- Secure container disappearing
+
+#### Required SVM Settings
+
+In SVM's configuration, navigate to **Raid Settings** and ensure:
+
+| Setting | Required Value | Reason |
+|---------|---------------|--------|
+| **Safe Exit** | **OFF (Disabled)** | Interferes with death detection and raid end processing |
+| **Softcore Mode** | **OFF (Disabled)** | Conflicts with KSG's gear restoration system |
+
+#### SVM "Inventory and Items" Category Warning
+
+Settings in SVM's **"Inventory and Items"** category may interfere with Keep Starting Gear. These include settings that modify:
+- Item loss on death
+- Insurance behavior
+- Secure container behavior
+- Inventory modifications
+
+**Use these settings at your own discretion.** If you enable SVM inventory-related settings and also use Keep Starting Gear, you may experience unexpected behavior including **loss of inventory**. We cannot provide support for issues caused by conflicting SVM settings.
+
+#### How to Configure SVM
+
+1. Open your SPT launcher or server
+2. Access SVM's configuration (check SVM's documentation for location)
+3. Find **Raid Settings** section
+4. Set **Safe Exit = OFF**
+5. Set **Softcore Mode = OFF**
+6. Save and restart the server
+
+#### Still Having Issues?
+
+If you've disabled Safe Exit and Softcore Mode but still have problems:
+1. Try disabling ALL SVM "Inventory and Items" settings temporarily
+2. Test if Keep Starting Gear works correctly
+3. Re-enable SVM settings one at a time to identify the conflict
+4. Report the specific conflicting setting on our GitHub issues page
 
 ---
 
@@ -266,6 +307,12 @@ Thanks to everyone who reported bugs and helped improve the mod:
 - **@Matheus** - Reported gamma container disappearing during raid loading
 - **@wolthon** - Reported secure container loss with disabled setting
 - **@zezaovlr** - Reported ammo/grenade restoration issue
+- **@Toireht** - Reported version mismatch issue
+- **@L4Z3RB1** - Reported version mismatch via GitHub
+- **@kurdamir2** - Reported snapshot not clearing after extraction
+- **@andryi2509** - Reported SVM detection and settings issues
+- **@trollcze, @cykablyat, @benadryldealer** - Reported duplicate item crashes
+- **@zezika, @Bert** - Reported secure container issues
 
 ---
 

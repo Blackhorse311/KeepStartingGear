@@ -327,9 +327,40 @@ public class CustomInRaidHelper : InRaidHelper
             }
             _logger.Debug($"[KeepStartingGear-Server] Existing inventory has {existingItemIds.Count} items before restoration");
 
+            // Build a map of snapshot item IDs to their root slot
+            // This lets us skip items from non-managed slots
+            var snapshotItemSlots = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var item in snapshot.Items)
+            {
+                if (string.IsNullOrEmpty(item.Id)) continue;
+
+                // Find the root slot for this item by tracing up the parent chain
+                string rootSlot = null;
+                var currentItem = item;
+                int maxDepth = 20; // Prevent infinite loops
+                while (currentItem != null && maxDepth-- > 0)
+                {
+                    // If this item's parent is Equipment, its SlotId is the root slot
+                    if (currentItem.ParentId == snapshotEquipmentId)
+                    {
+                        rootSlot = currentItem.SlotId;
+                        break;
+                    }
+
+                    // Find parent item in snapshot
+                    currentItem = snapshot.Items.FirstOrDefault(i => i.Id == currentItem.ParentId);
+                }
+
+                if (!string.IsNullOrEmpty(rootSlot))
+                {
+                    snapshotItemSlots[item.Id] = rootSlot;
+                }
+            }
+
             // Add snapshot items
             int addedCount = 0;
             int skippedDuplicates = 0;
+            int skippedNonManaged = 0;
             foreach (var snapshotItem in snapshot.Items)
             {
                 if (snapshotItem.Tpl == EquipmentContainerTpl)
@@ -340,6 +371,18 @@ public class CustomInRaidHelper : InRaidHelper
                 {
                     _logger.Warning($"[KeepStartingGear-Server] Skipping item with missing Id or Tpl");
                     continue;
+                }
+
+                // Skip items from non-managed slots (they should be preserved, not restored from snapshot)
+                // This prevents adding duplicate items when a slot like SecuredContainer is disabled
+                if (snapshotItemSlots.TryGetValue(snapshotItem.Id, out var rootSlot) && !string.IsNullOrEmpty(rootSlot))
+                {
+                    if (!includedSlotIds.Contains(rootSlot))
+                    {
+                        _logger.Debug($"[KeepStartingGear-Server] Skipping item {snapshotItem.Id} from non-managed slot '{rootSlot}'");
+                        skippedNonManaged++;
+                        continue;
+                    }
                 }
 
                 // CRITICAL: Check for duplicate item ID before adding
@@ -400,6 +443,10 @@ public class CustomInRaidHelper : InRaidHelper
             if (skippedDuplicates > 0)
             {
                 _logger.Debug($"[KeepStartingGear-Server] Skipped {skippedDuplicates} duplicate items");
+            }
+            if (skippedNonManaged > 0)
+            {
+                _logger.Debug($"[KeepStartingGear-Server] Skipped {skippedNonManaged} items from non-managed slots (preserved)");
             }
 
             // Delete snapshot file
