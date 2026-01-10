@@ -135,6 +135,11 @@ public class NotificationOverlay : MonoBehaviour
     /// </summary>
     private bool _stylesInitialized;
 
+    /// <summary>
+    /// Cached texture for box background. Must be destroyed on cleanup to prevent VRAM leak.
+    /// </summary>
+    private Texture2D _backgroundTexture;
+
     // ========================================================================
     // Display Configuration Constants
     // ========================================================================
@@ -212,10 +217,17 @@ public class NotificationOverlay : MonoBehaviour
     }
 
     /// <summary>
-    /// Called when the component is destroyed. Cleans up singleton reference.
+    /// Called when the component is destroyed. Cleans up singleton reference and textures.
     /// </summary>
     private void OnDestroy()
     {
+        // Clean up texture to prevent VRAM leak
+        if (_backgroundTexture != null)
+        {
+            Destroy(_backgroundTexture);
+            _backgroundTexture = null;
+        }
+
         // Clear singleton reference if this was the active instance
         if (Instance == this)
         {
@@ -317,6 +329,13 @@ public class NotificationOverlay : MonoBehaviour
     /// </remarks>
     public static void Show(string message, NotificationType type, float duration = DefaultDuration)
     {
+        // Check if notifications are disabled in settings
+        if (Configuration.Settings.ShowNotifications?.Value == false)
+        {
+            // Notifications disabled - silently skip display
+            return;
+        }
+
         // Auto-create instance if needed
         if (Instance == null)
         {
@@ -376,7 +395,9 @@ public class NotificationOverlay : MonoBehaviour
         // Create style for the notification box background
         _boxStyle = new GUIStyle(GUI.skin.box);
         _boxStyle.alignment = TextAnchor.MiddleCenter;
-        _boxStyle.normal.background = MakeTexture(2, 2, Color.white);
+        // Create and cache the texture so it can be destroyed on cleanup
+        _backgroundTexture = MakeTexture(2, 2, Color.white);
+        _boxStyle.normal.background = _backgroundTexture;
         _boxStyle.border = new RectOffset(1, 1, 1, 1);
         _boxStyle.padding = new RectOffset(10, 10, 10, 10);
 

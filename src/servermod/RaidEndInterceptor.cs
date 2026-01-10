@@ -21,6 +21,10 @@
 // Created by the BepInEx client mod and stored in:
 // BepInEx/plugins/Blackhorse311-KeepStartingGear/snapshots/{sessionId}.json
 //
+// REFACTORED:
+// Restoration logic has been extracted to SnapshotRestorer class to eliminate
+// code duplication with CustomInRaidHelper.
+//
 // AUTHOR: Blackhorse311
 // LICENSE: MIT
 // ============================================================================
@@ -30,13 +34,11 @@ using SPTarkov.DI.Annotations;
 using SPTarkov.Server.Core.Callbacks;
 using SPTarkov.Server.Core.Controllers;
 using SPTarkov.Server.Core.Models.Common;
-using SPTarkov.Server.Core.Models.Eft.Common.Tables;
 using SPTarkov.Server.Core.Models.Eft.Match;
 using SPTarkov.Server.Core.Models.Enums;
 using SPTarkov.Server.Core.Models.Utils;
 using SPTarkov.Server.Core.Services;
 using SPTarkov.Server.Core.Utils;
-using Path = System.IO.Path;  // Disambiguate from SPT's Path class
 
 namespace Blackhorse311.KeepStartingGear.Server;
 
@@ -72,96 +74,23 @@ public class RaidEndInterceptor(
     : MatchCallbacks(httpResponseUtil, matchController, databaseService)
 {
     // ========================================================================
-    // Path Configuration
+    // Dependencies
     // ========================================================================
 
     /// <summary>
     /// Path to snapshot files created by the BepInEx client mod.
-    /// Dynamically resolved based on the server mod's installation location.
     /// </summary>
-    /// <remarks>
-    /// <para>
-    /// The path is derived from the server mod's DLL location:
-    /// </para>
-    /// <list type="bullet">
-    ///   <item>Server mod DLL: {SPT_ROOT}\SPT\user\mods\Blackhorse311-KeepStartingGear\*.dll</item>
-    ///   <item>Navigate up 4 levels to reach SPT_ROOT</item>
-    ///   <item>Then: {SPT_ROOT}\BepInEx\plugins\Blackhorse311-KeepStartingGear\snapshots\</item>
-    /// </list>
-    /// <para>
-    /// This ensures the mod works regardless of where SPT is installed.
-    /// </para>
-    /// </remarks>
-    private readonly string _snapshotsPath = ResolveSnapshotsPath();
-
-    // ========================================================================
-    // Constants
-    // ========================================================================
+    private readonly string _snapshotsPath = SnapshotRestorerHelper.ResolveSnapshotsPath();
 
     /// <summary>
-    /// Equipment container template ID - identifies the root equipment container.
-    /// All equipped items are children of this container.
+    /// Shared restorer instance - lazy initialized to use logger.
     /// </summary>
-    private const string EquipmentTemplateId = "55d7217a4bdc2d86028b456d";
+    private SnapshotRestorer<RaidEndInterceptor>? _restorer;
 
     /// <summary>
-    /// Mod folder name - used for both server and client mod folders.
+    /// Gets or creates the snapshot restorer instance.
     /// </summary>
-    private const string ModFolderName = "Blackhorse311-KeepStartingGear";
-
-    // ========================================================================
-    // Path Resolution
-    // ========================================================================
-
-    /// <summary>
-    /// Resolves the snapshots path dynamically based on the server mod's DLL location.
-    /// </summary>
-    /// <returns>Full path to the snapshots directory</returns>
-    /// <remarks>
-    /// <para>
-    /// Path resolution logic:
-    /// </para>
-    /// <list type="number">
-    ///   <item>Get this DLL's location: {SPT_ROOT}\SPT\user\mods\{ModFolder}\*.dll</item>
-    ///   <item>Navigate up to SPT_ROOT (4 parent directories)</item>
-    ///   <item>Construct BepInEx path: {SPT_ROOT}\BepInEx\plugins\{ModFolder}\snapshots\</item>
-    /// </list>
-    /// </remarks>
-    private static string ResolveSnapshotsPath()
-    {
-        try
-        {
-            // Get the directory where this DLL is located
-            // e.g., {SPT_ROOT}/SPT/user/mods/Blackhorse311-KeepStartingGear/
-            string dllPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
-            string? modDirectory = Path.GetDirectoryName(dllPath);
-
-            if (string.IsNullOrEmpty(modDirectory))
-            {
-                throw new InvalidOperationException("Could not determine mod directory from DLL path");
-            }
-
-            // Navigate up to SPT root:
-            // From: {SPT_ROOT}\SPT\user\mods\{ModFolder}\
-            // Up 1: {SPT_ROOT}\SPT\user\mods\
-            // Up 2: {SPT_ROOT}\SPT\user\
-            // Up 3: {SPT_ROOT}\SPT\
-            // Up 4: {SPT_ROOT}\
-            string sptRoot = Path.GetFullPath(Path.Combine(modDirectory, "..", "..", "..", ".."));
-
-            // Construct the BepInEx snapshots path
-            // {SPT_ROOT}\BepInEx\plugins\{ModFolder}\snapshots\
-            string snapshotsPath = Path.Combine(sptRoot, "BepInEx", "plugins", ModFolderName, "snapshots");
-
-            return snapshotsPath;
-        }
-        catch (Exception)
-        {
-            // Fallback to a relative path if resolution fails
-            // This shouldn't happen in normal circumstances
-            return Path.Combine("..", "..", "..", "BepInEx", "plugins", ModFolderName, "snapshots");
-        }
-    }
+    private SnapshotRestorer<RaidEndInterceptor> Restorer => _restorer ??= new SnapshotRestorer<RaidEndInterceptor>(logger, _snapshotsPath);
 
     // ========================================================================
     // Main Entry Point
@@ -195,9 +124,9 @@ public class RaidEndInterceptor(
         {
             var playerSide = info.Results?.Profile?.Info?.Side ?? "unknown";
 
-            logger.Debug($"[KeepStartingGear-Server] EndLocalRaid intercepted for session: {sessionID}");
-            logger.Debug($"[KeepStartingGear-Server] Exit status: {info.Results?.Result}, Player side: {playerSide}");
-            logger.Debug($"[KeepStartingGear-Server] Snapshots path: {_snapshotsPath}");
+            logger.Debug($"{Constants.LogPrefix} EndLocalRaid intercepted for session: {sessionID}");
+            logger.Debug($"{Constants.LogPrefix} Exit status: {info.Results?.Result}, Player side: {playerSide}");
+            logger.Debug($"{Constants.LogPrefix} Snapshots path: {_snapshotsPath}");
 
             // Only process PMC deaths (Scav uses separate inventory)
             bool isPmc = playerSide != "Savage";
@@ -210,51 +139,46 @@ public class RaidEndInterceptor(
 
             if (isPmc && playerDied)
             {
-                logger.Debug("[KeepStartingGear-Server] PMC death detected - checking for snapshot...");
+                logger.Debug($"{Constants.LogPrefix} PMC death detected - checking for snapshot...");
 
                 // Try to restore from snapshot
                 bool restored = TryRestoreFromSnapshot(sessionID, info);
 
                 if (restored)
                 {
-                    logger.Info("[KeepStartingGear-Server] Inventory restored from snapshot!");
+                    logger.Info($"{Constants.LogPrefix} Inventory restored from snapshot!");
 
                     // Set flag so CustomInRaidHelper skips DeleteInventory
-                    SnapshotRestorationState.InventoryRestoredFromSnapshot = true;
-                    logger.Debug("[KeepStartingGear-Server] Set InventoryRestoredFromSnapshot flag to skip DeleteInventory");
+                    // Using MarkRestored() instead of direct assignment for thread safety
+                    SnapshotRestorationState.MarkRestored();
+                    logger.Debug($"{Constants.LogPrefix} Set InventoryRestoredFromSnapshot flag to skip DeleteInventory");
                 }
                 else
                 {
-                    logger.Debug("[KeepStartingGear-Server] No snapshot found or restoration failed - normal death processing.");
+                    logger.Debug($"{Constants.LogPrefix} No snapshot found or restoration failed - normal death processing.");
                 }
             }
             else if (!playerDied)
             {
                 // Player extracted - clear any snapshot to prevent accidental restoration
-                logger.Debug("[KeepStartingGear-Server] Player survived/extracted - clearing any snapshots...");
+                logger.Debug($"{Constants.LogPrefix} Player survived/extracted - clearing any snapshots...");
                 ClearSnapshot(sessionID);
             }
         }
         catch (Exception ex)
         {
-            logger.Error($"[KeepStartingGear-Server] Error in EndLocalRaid interceptor: {ex.Message}");
-            logger.Error($"[KeepStartingGear-Server] Stack trace: {ex.StackTrace}");
+            logger.Error($"{Constants.LogPrefix} Error in EndLocalRaid interceptor: {ex.Message}");
+            logger.Error($"{Constants.LogPrefix} Stack trace: {ex.StackTrace}");
         }
 
         // Always call the base implementation to complete normal processing
         // This handles XP, quests, insurance, and other raid end logic
-        logger.Debug("[KeepStartingGear-Server] Calling base matchController.EndLocalRaid()...");
+        logger.Debug($"{Constants.LogPrefix} Calling base matchController.EndLocalRaid()...");
         matchController.EndLocalRaid(sessionID, info);
-        logger.Debug("[KeepStartingGear-Server] Base matchController.EndLocalRaid() completed.");
+        logger.Debug($"{Constants.LogPrefix} Base matchController.EndLocalRaid() completed.");
 
-        // Post-processing note (helps diagnose conflicts with other mods like SVM)
-        if (SnapshotRestorationState.InventoryRestoredFromSnapshot)
-        {
-            logger.Debug("[KeepStartingGear-Server] POST-PROCESSING: Inventory restoration completed.");
-
-            // Reset the flag for next raid
-            SnapshotRestorationState.InventoryRestoredFromSnapshot = false;
-        }
+        // Note: The flag is now consumed atomically by CustomInRaidHelper.DeleteInventory()
+        // via TryConsume(), so we don't need to reset it here.
 
         return new ValueTask<string>(httpResponseUtil.NullResponse());
     }
@@ -265,451 +189,42 @@ public class RaidEndInterceptor(
 
     /// <summary>
     /// Attempts to restore inventory from a snapshot file.
+    /// Delegates to the shared SnapshotRestorer class.
     /// </summary>
     /// <param name="sessionID">Player's session/profile ID</param>
     /// <param name="info">Raid end data containing the profile to modify</param>
     /// <returns>True if restoration succeeded, false otherwise</returns>
-    /// <remarks>
-    /// <para>
-    /// Restoration process:
-    /// </para>
-    /// <list type="number">
-    ///   <item>Look for snapshot file matching session ID</item>
-    ///   <item>Deserialize snapshot JSON</item>
-    ///   <item>Find Equipment container in both snapshot and profile</item>
-    ///   <item>Remove all current equipment items from profile</item>
-    ///   <item>Add all snapshot items to profile (with ID remapping)</item>
-    ///   <item>Delete snapshot file after successful restoration</item>
-    /// </list>
-    /// </remarks>
     private bool TryRestoreFromSnapshot(MongoId sessionID, EndLocalRaidRequestData info)
     {
-        try
+        // Get current inventory from the raid end data
+        var currentInventory = info.Results?.Profile?.Inventory;
+        if (currentInventory == null || currentInventory.Items == null)
         {
-            // Look for snapshot file
-            var snapshotPath = Path.Combine(_snapshotsPath, $"{sessionID}.json");
-
-            if (!File.Exists(snapshotPath))
-            {
-                logger.Debug($"[KeepStartingGear-Server] No snapshot file found at: {snapshotPath}");
-                return false;
-            }
-
-            logger.Debug($"[KeepStartingGear-Server] Found snapshot file: {snapshotPath}");
-
-            // Read and deserialize snapshot
-            var snapshotJson = File.ReadAllText(snapshotPath);
-
-            // Debug: Log part of the raw JSON to verify structure
-            logger.Debug($"[KeepStartingGear-Server] Raw snapshot JSON preview: {snapshotJson.Substring(0, Math.Min(500, snapshotJson.Length))}...");
-
-            var snapshot = JsonSerializer.Deserialize<InventorySnapshot>(snapshotJson, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            });
-
-            if (snapshot == null || snapshot.Items == null || snapshot.Items.Count == 0)
-            {
-                logger.Warning("[KeepStartingGear-Server] Snapshot is empty or invalid");
-                return false;
-            }
-
-            logger.Debug($"[KeepStartingGear-Server] Snapshot contains {snapshot.Items.Count} items");
-
-            // Debug: Log deserialized IncludedSlots
-            if (snapshot.IncludedSlots != null)
-            {
-                logger.Debug($"[KeepStartingGear-Server] Deserialized IncludedSlots: [{string.Join(", ", snapshot.IncludedSlots)}]");
-            }
-            else
-            {
-                logger.Debug("[KeepStartingGear-Server] IncludedSlots is NULL after deserialization (legacy snapshot)");
-            }
-
-            // Get current inventory from the raid end data
-            var currentInventory = info.Results?.Profile?.Inventory;
-            if (currentInventory == null || currentInventory.Items == null)
-            {
-                logger.Error("[KeepStartingGear-Server] Cannot access profile inventory");
-                return false;
-            }
-
-            // ================================================================
-            // Find Equipment Container IDs
-            // ================================================================
-
-            // Find Equipment container ID in the current profile
-            string? equipmentId = null;
-            foreach (var item in currentInventory.Items)
-            {
-                if (item.Template == EquipmentTemplateId)
-                {
-                    equipmentId = item.Id;
-                    break;
-                }
-            }
-
-            if (string.IsNullOrEmpty(equipmentId))
-            {
-                logger.Error("[KeepStartingGear-Server] Could not find Equipment container in profile");
-                return false;
-            }
-
-            logger.Debug($"[KeepStartingGear-Server] Profile Equipment ID: {equipmentId}");
-
-            // Find Equipment container ID in the snapshot
-            string? snapshotEquipmentId = null;
-            foreach (var snapshotItem in snapshot.Items)
-            {
-                if (snapshotItem.Tpl == EquipmentTemplateId)
-                {
-                    snapshotEquipmentId = snapshotItem.Id;
-                    break;
-                }
-            }
-
-            logger.Debug($"[KeepStartingGear-Server] Snapshot Equipment ID: {snapshotEquipmentId}");
-
-            // ================================================================
-            // Determine Which Slots Were Configured for Capture
-            // ================================================================
-
-            // Get the set of slot IDs that USER ENABLED in settings (IncludedSlots)
-            // This is the authoritative list of what slots should be managed by the mod
-            var includedSlotIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            if (snapshot.IncludedSlots != null && snapshot.IncludedSlots.Count > 0)
-            {
-                foreach (var slot in snapshot.IncludedSlots)
-                {
-                    includedSlotIds.Add(slot);
-                }
-                logger.Debug($"[KeepStartingGear-Server] User configured slots to manage: {string.Join(", ", includedSlotIds)}");
-            }
-            else
-            {
-                logger.Debug("[KeepStartingGear-Server] No IncludedSlots in snapshot - legacy snapshot, using item-based detection");
-            }
-
-            // Get the set of slot IDs that HAVE ITEMS in the snapshot
-            var snapshotSlotIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var snapshotItem in snapshot.Items)
-            {
-                // Only count direct children of Equipment (top-level slots)
-                if (snapshotItem.ParentId == snapshotEquipmentId && !string.IsNullOrEmpty(snapshotItem.SlotId))
-                {
-                    snapshotSlotIds.Add(snapshotItem.SlotId);
-                }
-            }
-
-            logger.Debug($"[KeepStartingGear-Server] Snapshot contains slots with items: {string.Join(", ", snapshotSlotIds)}");
-
-            // Get the set of slot IDs that were EMPTY at snapshot time
-            // Items in these slots should be REMOVED (they were looted during raid)
-            var emptySlotIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            if (snapshot.EmptySlots != null && snapshot.EmptySlots.Count > 0)
-            {
-                foreach (var emptySlot in snapshot.EmptySlots)
-                {
-                    emptySlotIds.Add(emptySlot);
-                }
-                logger.Debug($"[KeepStartingGear-Server] Snapshot tracked empty slots: {string.Join(", ", emptySlotIds)}");
-            }
-
-            // ================================================================
-            // Remove Current Equipment Items (From Managed Slots)
-            // ================================================================
-
-            // Collect all equipment-related item IDs that should be removed
-            // Remove items from slots that are MANAGED by the mod (in IncludedSlots)
-            // Preserve items from slots NOT managed by the mod (user disabled them)
-            var equipmentItemIds = new HashSet<string>();
-
-            // Items to preserve (in slots NOT managed by the mod)
-            // Note: ALL equipment items are removed on death, then snapshot items are restored
-
-            // First, find direct children of Equipment and categorize them
-            foreach (var item in currentInventory.Items)
-            {
-                if (item.ParentId == equipmentId)
-                {
-                    var slotId = item.SlotId ?? "";
-
-                    // Determine if this slot is managed by the mod
-                    // A slot is managed if:
-                    // 1. It's in IncludedSlots (user enabled it), OR
-                    // 2. No IncludedSlots exist (legacy snapshot) AND it's in snapshotSlotIds or emptySlotIds
-                    bool slotIsManaged;
-                    if (includedSlotIds.Count > 0)
-                    {
-                        // Modern snapshot: use IncludedSlots as authoritative source
-                        slotIsManaged = includedSlotIds.Contains(slotId);
-                    }
-                    else
-                    {
-                        // Legacy snapshot: fall back to old behavior
-                        slotIsManaged = snapshotSlotIds.Contains(slotId) || emptySlotIds.Contains(slotId);
-                    }
-
-                    // Only remove items from MANAGED slots
-                    // - Managed slots: Items will be REMOVED then RESTORED from snapshot
-                    // - Non-managed slots: Items are PRESERVED (not touched by the mod)
-                    //   This allows normal Tarkov behavior for disabled slots (e.g., secure container keeps items)
-
-                    if (!slotIsManaged)
-                    {
-                        // This slot is NOT managed by the mod - PRESERVE it
-                        // Don't add to equipmentItemIds, so it won't be removed
-                        logger.Debug($"[KeepStartingGear-Server] PRESERVING item in slot '{slotId}' (slot not managed by mod): {item.Template}");
-                        continue;
-                    }
-
-                    // Slot IS managed - add to removal list
-                    equipmentItemIds.Add(item.Id!);
-
-                    // Log why this item is being removed
-                    if (snapshotSlotIds.Contains(slotId))
-                    {
-                        logger.Debug($"[KeepStartingGear-Server] Removing item from slot '{slotId}' (will be restored from snapshot): {item.Template}");
-                    }
-                    else if (emptySlotIds.Contains(slotId))
-                    {
-                        logger.Debug($"[KeepStartingGear-Server] Removing item from slot '{slotId}' (slot was empty at snapshot time - loot lost): {item.Template}");
-                    }
-                    else
-                    {
-                        // Slot is in IncludedSlots but wasn't in snapshot (maybe added after snapshot?)
-                        logger.Debug($"[KeepStartingGear-Server] Removing item from slot '{slotId}' (slot is managed but had no snapshot data): {item.Template}");
-                    }
-                }
-            }
-
-            // Then, recursively find all nested items (items inside containers being removed)
-            bool foundMore = true;
-            while (foundMore)
-            {
-                foundMore = false;
-                foreach (var item in currentInventory.Items)
-                {
-                    if (item.ParentId != null)
-                    {
-                        // If parent is being removed, this item should be removed too
-                        if (equipmentItemIds.Contains(item.ParentId) && !equipmentItemIds.Contains(item.Id!))
-                        {
-                            equipmentItemIds.Add(item.Id!);
-                            foundMore = true;
-                        }
-                    }
-                }
-            }
-
-            logger.Debug($"[KeepStartingGear-Server] Found {equipmentItemIds.Count} equipment items to remove");
-
-            // Remove only equipment items that are in captured slots
-            currentInventory.Items.RemoveAll(item => equipmentItemIds.Contains(item.Id!));
-
-            logger.Debug($"[KeepStartingGear-Server] Removed equipment items, {currentInventory.Items.Count} items remaining");
-
-            // ================================================================
-            // Add Snapshot Items
-            // ================================================================
-
-            // CRITICAL: Build a set of all existing item IDs to prevent duplicates
-            // This fixes the "An item with the same key has already been added" crash
-            var existingItemIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var item in currentInventory.Items)
-            {
-                if (!string.IsNullOrEmpty(item.Id))
-                {
-                    existingItemIds.Add(item.Id);
-                }
-            }
-            logger.Debug($"[KeepStartingGear-Server] Existing inventory has {existingItemIds.Count} items before restoration");
-
-            // Build a map of snapshot item IDs to their root slot
-            // This lets us skip items from non-managed slots
-            var snapshotItemSlots = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var item in snapshot.Items)
-            {
-                if (string.IsNullOrEmpty(item.Id)) continue;
-
-                // Find the root slot for this item by tracing up the parent chain
-                string rootSlot = null;
-                var currentItem = item;
-                int maxDepth = 20; // Prevent infinite loops
-                while (currentItem != null && maxDepth-- > 0)
-                {
-                    // If this item's parent is Equipment, its SlotId is the root slot
-                    if (currentItem.ParentId == snapshotEquipmentId)
-                    {
-                        rootSlot = currentItem.SlotId;
-                        break;
-                    }
-
-                    // Find parent item in snapshot
-                    currentItem = snapshot.Items.FirstOrDefault(i => i.Id == currentItem.ParentId);
-                }
-
-                if (!string.IsNullOrEmpty(rootSlot))
-                {
-                    snapshotItemSlots[item.Id] = rootSlot;
-                }
-            }
-
-            int addedCount = 0;
-            int skippedDuplicates = 0;
-            int skippedNonManaged = 0;
-            foreach (var snapshotItem in snapshot.Items)
-            {
-                // Skip the Equipment container - keep the profile's original
-                if (snapshotItem.Tpl == EquipmentTemplateId)
-                    continue;
-
-                // Skip items with missing required data
-                if (string.IsNullOrEmpty(snapshotItem.Id) || string.IsNullOrEmpty(snapshotItem.Tpl))
-                {
-                    logger.Warning($"[KeepStartingGear-Server] Skipping item with missing Id or Tpl");
-                    continue;
-                }
-
-                // Skip items from non-managed slots (they should be preserved, not restored from snapshot)
-                // This prevents adding duplicate items when a slot like SecuredContainer is disabled
-                if (snapshotItemSlots.TryGetValue(snapshotItem.Id, out var rootSlot) && !string.IsNullOrEmpty(rootSlot))
-                {
-                    if (!includedSlotIds.Contains(rootSlot))
-                    {
-                        logger.Debug($"[KeepStartingGear-Server] Skipping item {snapshotItem.Id} from non-managed slot '{rootSlot}'");
-                        skippedNonManaged++;
-                        continue;
-                    }
-                }
-
-                // CRITICAL: Check for duplicate item ID before adding
-                // This prevents the "An item with the same key has already been added" crash
-                if (existingItemIds.Contains(snapshotItem.Id))
-                {
-                    logger.Debug($"[KeepStartingGear-Server] DUPLICATE PREVENTED: Item {snapshotItem.Id} already exists - skipping");
-                    skippedDuplicates++;
-                    continue;
-                }
-
-                // Create new inventory item from snapshot
-                var newItem = new Item
-                {
-                    Id = snapshotItem.Id,
-                    Template = snapshotItem.Tpl,
-                    SlotId = snapshotItem.SlotId
-                };
-
-                // Remap parent ID if it's the Equipment container
-                // This ensures items go into the profile's Equipment, not the snapshot's
-                if (snapshotItem.ParentId == snapshotEquipmentId)
-                {
-                    newItem.ParentId = equipmentId;
-                }
-                else
-                {
-                    newItem.ParentId = snapshotItem.ParentId;
-                }
-
-                // Copy location data (grid position for container items OR integer position for cartridges)
-                if (snapshotItem.LocationIndex.HasValue)
-                {
-                    // CARTRIDGE LOCATION: Use integer position for magazine cartridges
-                    // SPT profiles expect cartridges to have integer locations (0, 1, 2, etc.)
-                    // This is set directly on the Location property as an integer
-                    newItem.Location = snapshotItem.LocationIndex.Value;
-
-                    logger.Debug($"[KeepStartingGear-Server] [CARTRIDGE] Restored cartridge position {snapshotItem.LocationIndex.Value} for {snapshotItem.Tpl}");
-                }
-                else if (snapshotItem.Location != null)
-                {
-                    // GRID LOCATION: Use x/y/r object for container items
-                    newItem.Location = new ItemLocation
-                    {
-                        X = snapshotItem.Location.X,
-                        Y = snapshotItem.Location.Y,
-                        R = (ItemRotation)snapshotItem.Location.R,
-                        IsSearched = snapshotItem.Location.IsSearched
-                    };
-                }
-
-                // Copy update data (stack count, durability, etc.)
-                if (snapshotItem.Upd != null)
-                {
-                    try
-                    {
-                        // Serialize and deserialize to convert between types
-                        var updJson = JsonSerializer.Serialize(snapshotItem.Upd);
-                        logger.Debug($"[KeepStartingGear-Server] [UPD] Raw Upd JSON for {snapshotItem.Id}: {updJson}");
-
-                        newItem.Upd = JsonSerializer.Deserialize<Upd>(updJson, new JsonSerializerOptions
-                        {
-                            PropertyNameCaseInsensitive = true
-                        });
-
-                        // If standard deserialization failed to get StackObjectsCount, try parsing directly
-                        if (newItem.Upd != null && (newItem.Upd.StackObjectsCount == null || newItem.Upd.StackObjectsCount == 0))
-                        {
-                            // Try to extract StackObjectsCount directly from the JsonElement
-                            if (snapshotItem.Upd is JsonElement updElement)
-                            {
-                                if (updElement.TryGetProperty("StackObjectsCount", out var stackProp) ||
-                                    updElement.TryGetProperty("stackObjectsCount", out stackProp))
-                                {
-                                    if (stackProp.TryGetInt32(out int stackCount) && stackCount > 0)
-                                    {
-                                        newItem.Upd.StackObjectsCount = stackCount;
-                                        logger.Debug($"[KeepStartingGear-Server] [UPD] Manually extracted StackObjectsCount={stackCount} for {snapshotItem.Id}");
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        // If Upd conversion fails, skip it - item will use defaults
-                        logger.Warning($"[KeepStartingGear-Server] Could not convert Upd for item {snapshotItem.Id}: {ex.Message}");
-                    }
-                }
-
-                currentInventory.Items.Add(newItem);
-                existingItemIds.Add(newItem.Id!); // Track newly added item to prevent duplicates within snapshot
-                addedCount++;
-            }
-
-            logger.Debug($"[KeepStartingGear-Server] Added {addedCount} items from snapshot, total now: {currentInventory.Items.Count}");
-            if (skippedDuplicates > 0)
-            {
-                logger.Debug($"[KeepStartingGear-Server] Skipped {skippedDuplicates} duplicate items");
-            }
-            if (skippedNonManaged > 0)
-            {
-                logger.Debug($"[KeepStartingGear-Server] Skipped {skippedNonManaged} items from non-managed slots (preserved)");
-            }
-
-            // ================================================================
-            // Cleanup
-            // ================================================================
-
-            // Delete the snapshot file after successful restoration
-            try
-            {
-                File.Delete(snapshotPath);
-                logger.Debug($"[KeepStartingGear-Server] Deleted snapshot file: {snapshotPath}");
-            }
-            catch (Exception ex)
-            {
-                logger.Warning($"[KeepStartingGear-Server] Failed to delete snapshot file: {ex.Message}");
-            }
-
-            return true;
-        }
-        catch (Exception ex)
-        {
-            logger.Error($"[KeepStartingGear-Server] Error restoring from snapshot: {ex.Message}");
-            logger.Error($"[KeepStartingGear-Server] Stack trace: {ex.StackTrace}");
+            logger.Error($"{Constants.LogPrefix} Cannot access profile inventory");
             return false;
         }
+
+        // Delegate to shared restorer
+        var result = Restorer.TryRestore(sessionID.ToString(), currentInventory.Items);
+
+        if (result.Success)
+        {
+            logger.Info($"{Constants.LogPrefix} Restoration complete: {result.ItemsAdded} items added");
+            if (result.DuplicatesSkipped > 0)
+            {
+                logger.Debug($"{Constants.LogPrefix} Skipped {result.DuplicatesSkipped} duplicate items");
+            }
+            if (result.NonManagedSkipped > 0)
+            {
+                logger.Debug($"{Constants.LogPrefix} Skipped {result.NonManagedSkipped} items from non-managed slots");
+            }
+        }
+        else if (!string.IsNullOrEmpty(result.ErrorMessage) && result.ErrorMessage != "No snapshot file found")
+        {
+            logger.Warning($"{Constants.LogPrefix} Restoration failed: {result.ErrorMessage}");
+        }
+
+        return result.Success;
     }
 
     // ========================================================================
@@ -718,28 +233,12 @@ public class RaidEndInterceptor(
 
     /// <summary>
     /// Deletes the snapshot file for a session (called on successful extraction).
+    /// Delegates to the shared SnapshotRestorer.
     /// </summary>
     /// <param name="sessionID">Player's session/profile ID</param>
-    /// <remarks>
-    /// When a player extracts successfully, they keep their loot normally.
-    /// We clear the snapshot to prevent it from being accidentally restored
-    /// in a future raid.
-    /// </remarks>
     private void ClearSnapshot(MongoId sessionID)
     {
-        try
-        {
-            var snapshotPath = Path.Combine(_snapshotsPath, $"{sessionID}.json");
-            if (File.Exists(snapshotPath))
-            {
-                File.Delete(snapshotPath);
-                logger.Debug($"[KeepStartingGear-Server] Cleared snapshot on extraction: {snapshotPath}");
-            }
-        }
-        catch (Exception ex)
-        {
-            logger.Warning($"[KeepStartingGear-Server] Failed to clear snapshot: {ex.Message}");
-        }
+        Restorer.ClearSnapshot(sessionID.ToString());
     }
 }
 
@@ -828,14 +327,16 @@ public class SnapshotItem
     [System.Text.Json.Serialization.JsonPropertyName("slotId")]
     public string? SlotId { get; set; }
 
-    /// <summary>Grid position (for container items)</summary>
+    /// <summary>
+    /// Polymorphic location data - can be either an object (grid position) or integer (cartridge index).
+    /// Use GetLocation() and GetLocationIndex() helper methods to access the typed values.
+    /// </summary>
     [System.Text.Json.Serialization.JsonPropertyName("location")]
-    public ItemLocationData? Location { get; set; }
+    public JsonElement? Location { get; set; }
 
     /// <summary>
-    /// Integer position index for cartridges in magazines.
-    /// SPT profiles use integer locations (0, 1, 2, etc.) for cartridges
-    /// instead of the grid-style x/y/r object used for container items.
+    /// Legacy property for backwards compatibility with old snapshots that used separate locationIndex.
+    /// New snapshots use the polymorphic Location property instead.
     /// </summary>
     [System.Text.Json.Serialization.JsonPropertyName("locationIndex")]
     public int? LocationIndex { get; set; }
@@ -843,6 +344,87 @@ public class SnapshotItem
     /// <summary>Update data (stack count, durability, etc.)</summary>
     [System.Text.Json.Serialization.JsonPropertyName("upd")]
     public object? Upd { get; set; }
+
+    /// <summary>
+    /// Gets the grid location data if this item uses grid positioning.
+    /// Returns null if the item uses cartridge index positioning instead.
+    /// </summary>
+    public ItemLocationData? GetLocation()
+    {
+        // Safely check if Location has a value
+        if (!Location.HasValue)
+            return null;
+
+        var locationElement = Location.Value;
+
+        // Check for null JSON value
+        if (locationElement.ValueKind == JsonValueKind.Null || locationElement.ValueKind == JsonValueKind.Undefined)
+            return null;
+
+        // If it's a number, this is a cartridge index, not grid location
+        if (locationElement.ValueKind == JsonValueKind.Number)
+            return null;
+
+        // It's an object - deserialize as grid location
+        if (locationElement.ValueKind == JsonValueKind.Object)
+        {
+            try
+            {
+                return JsonSerializer.Deserialize<ItemLocationData>(locationElement.GetRawText());
+            }
+            catch (JsonException)
+            {
+                // Log deserialization failure but don't crash
+                return null;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Gets the cartridge index if this item uses integer positioning (magazine ammo).
+    /// Returns null if the item uses grid positioning instead.
+    /// Also checks the legacy LocationIndex property for backwards compatibility.
+    /// </summary>
+    public int? GetLocationIndex()
+    {
+        // Check legacy property first (for old snapshots)
+        if (LocationIndex.HasValue)
+            return LocationIndex.Value;
+
+        // Safely check if Location has a value
+        if (!Location.HasValue)
+            return null;
+
+        var locationElement = Location.Value;
+
+        // Check for null JSON value
+        if (locationElement.ValueKind == JsonValueKind.Null || locationElement.ValueKind == JsonValueKind.Undefined)
+            return null;
+
+        // If it's a number, return it as cartridge index
+        if (locationElement.ValueKind == JsonValueKind.Number)
+        {
+            try
+            {
+                // Use TryGetInt32 to safely handle overflow
+                if (locationElement.TryGetInt32(out int index))
+                {
+                    return index;
+                }
+                // Value is too large for Int32 - log warning and return null
+                return null;
+            }
+            catch (InvalidOperationException)
+            {
+                // Not a number - shouldn't happen given the ValueKind check, but be safe
+                return null;
+            }
+        }
+
+        return null;
+    }
 }
 
 /// <summary>

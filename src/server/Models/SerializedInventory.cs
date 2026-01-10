@@ -26,8 +26,11 @@
 // LICENSE: MIT
 // ============================================================================
 
+using System;
 using System.Collections.Generic;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using Blackhorse311.KeepStartingGear.Converters;
 
 namespace Blackhorse311.KeepStartingGear.Models;
 
@@ -99,8 +102,12 @@ public class SerializedItem
     /// Only populated for items in grid containers (backpacks, rigs, pockets).
     /// For magazine cartridges, this will be null and LocationIndex is used instead.
     /// </summary>
-    [JsonProperty("location")]
-    public ItemLocation Location { get; set; }
+    /// <remarks>
+    /// Access this property to get grid position data. For serialization,
+    /// use the LocationData property which handles polymorphic output.
+    /// </remarks>
+    [JsonIgnore]
+    public ItemLocation? Location { get; set; }
 
     /// <summary>
     /// Numeric position index for cartridges in magazines.
@@ -108,13 +115,85 @@ public class SerializedItem
     /// instead of the grid-style location object used by container items.
     /// </summary>
     /// <remarks>
-    /// This is stored separately from Location because:
-    /// - Grid items use Location (object with x, y, r)
-    /// - Magazine cartridges use LocationIndex (simple integer)
-    /// Both serialize to "location" in JSON but with different value types.
+    /// Access this property to get cartridge index. For serialization,
+    /// use the LocationData property which handles polymorphic output.
     /// </remarks>
     [JsonIgnore]
     public int? LocationIndex { get; set; }
+
+    /// <summary>
+    /// Polymorphic location data for JSON serialization.
+    /// Uses a custom converter to handle both grid positions (objects) and cartridge indices (integers).
+    /// </summary>
+    /// <remarks>
+    /// <para>SPT profiles use different location formats:</para>
+    /// <list type="bullet">
+    ///   <item>Grid items: {"x": 0, "y": 0, "r": 0, "isSearched": true}</item>
+    ///   <item>Magazine cartridges: 0 (simple integer)</item>
+    /// </list>
+    /// <para>
+    /// This property uses <see cref="LocationConverter"/> to handle both cases.
+    /// When reading, access <see cref="Location"/> or <see cref="LocationIndex"/> directly.
+    /// </para>
+    /// </remarks>
+    [JsonProperty("location", NullValueHandling = NullValueHandling.Ignore)]
+    [JsonConverter(typeof(LocationConverter))]
+    public LocationConverter.LocationResult? LocationData
+    {
+        get
+        {
+            // Return appropriate result based on what data we have
+            if (LocationIndex.HasValue)
+                return new LocationConverter.LocationResult { CartridgeIndex = LocationIndex.Value };
+
+            if (Location != null)
+                return new LocationConverter.LocationResult { GridLocation = Location };
+
+            return null;
+        }
+        set
+        {
+            if (value == null)
+            {
+                Location = null;
+                LocationIndex = null;
+                return;
+            }
+
+            if (value.IsCartridge)
+            {
+                LocationIndex = value.CartridgeIndex;
+                Location = null;
+            }
+            else if (value.IsGrid)
+            {
+                Location = value.GridLocation;
+                LocationIndex = null;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Helper method to set location from a grid position.
+    /// </summary>
+    public void SetGridLocation(ItemLocation location)
+    {
+        Location = location;
+        LocationIndex = null;
+    }
+
+    /// <summary>
+    /// Helper method to set location from a cartridge index.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">If index is negative</exception>
+    public void SetCartridgeIndex(int index)
+    {
+        if (index < 0)
+            throw new ArgumentOutOfRangeException(nameof(index), "Cartridge index cannot be negative");
+
+        LocationIndex = index;
+        Location = null;
+    }
 
     /// <summary>
     /// Update/state data for the item (stack count, durability, etc.).

@@ -31,6 +31,7 @@
 using System;
 using System.Reflection;
 using Blackhorse311.KeepStartingGear.Components;
+using Blackhorse311.KeepStartingGear.Constants;
 using Blackhorse311.KeepStartingGear.Services;
 using SPT.Reflection.Patching;
 using Comfort.Common;
@@ -196,14 +197,22 @@ public class RaidEndPatch : ModulePatch
                 return;
             }
 
-            // Check 4: For death events, verify the main player is actually dead
-            // For extraction events, verify the main player's health state
-            bool playerDied = exitStatus == ExitStatus.Killed ||
-                             exitStatus == ExitStatus.MissingInAction ||
-                             exitStatus == ExitStatus.Left;
+            // Check 4: Categorize the exit status using exhaustive switch
+            // This ensures we handle all known statuses and log any new ones
+            var exitCategory = ExitStatusCategories.Categorize(exitStatus);
 
-            bool playerExtracted = exitStatus == ExitStatus.Survived ||
-                                  exitStatus == ExitStatus.Runner;
+            if (exitCategory == ExitCategory.Unknown)
+            {
+                // Log unknown exit status for future investigation
+                Plugin.Log.LogWarning($"RaidEndPatch: Unknown exit status encountered: {exitStatus} (value: {(int)exitStatus})");
+                Plugin.Log.LogWarning("Please report this to the mod author so it can be properly categorized.");
+                return;
+            }
+
+            Plugin.Log.LogDebug($"RaidEndPatch: Exit categorized as {exitCategory}: {ExitStatusCategories.GetDescription(exitStatus)}");
+
+            bool playerDied = exitCategory == ExitCategory.Death;
+            bool playerExtracted = exitCategory == ExitCategory.Extraction;
 
             if (playerDied)
             {
@@ -289,14 +298,8 @@ public class RaidEndPatch : ModulePatch
                     NotificationOverlay.ShowSuccess("Extracted Successfully!");
                 }
             }
-            // ================================================================
-            // Other Exit Statuses
-            // ================================================================
-            else
-            {
-                // Other exit statuses (Run, Transit, etc.) - no special handling
-                Plugin.Log.LogDebug($"Exit status: {exitStatus} - no action taken");
-            }
+            // Note: Unknown statuses are handled at the top of this method
+            // and will cause an early return with a warning log.
         }
         catch (Exception ex)
         {

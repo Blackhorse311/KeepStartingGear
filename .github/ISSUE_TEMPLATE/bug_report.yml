@@ -64,7 +64,7 @@ body:
     id: other-mods
     attributes:
       label: Other Mods Installed
-      description: List any other mods you have installed (especially SVM, Fika, or gear-related mods)
+      description: List any other mods you have installed (especially SVM or gear-related mods)
       placeholder: |
         - SVM (with Softcore Mode disabled)
         - SAIN

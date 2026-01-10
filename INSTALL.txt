@@ -1,10 +1,10 @@
 ================================================================================
-KEEP STARTING GEAR v1.4.8 - INSTALLATION GUIDE
+KEEP STARTING GEAR v1.4.9 - INSTALLATION GUIDE
 ================================================================================
 
 REQUIREMENTS
 ------------
-- SPT 4.0.x (tested on 4.0.8)
+- SPT 4.0.x (tested on 4.0.11)
 - BepInEx 5.x (included with SPT)
 
 No additional dependencies required.
@@ -29,10 +29,11 @@ Step 3: Verify Installation
    │   └── plugins/
    │       └── Blackhorse311-KeepStartingGear/
    │           └── Blackhorse311.KeepStartingGear.dll    <-- Client mod
-   └── user/
-       └── mods/
-           └── Blackhorse311-KeepStartingGear/
-               └── Blackhorse311.KeepStartingGear.Server.dll    <-- Server mod
+   └── SPT/
+       └── user/
+           └── mods/
+               └── Blackhorse311-KeepStartingGear/
+                   └── Blackhorse311.KeepStartingGear.Server.dll    <-- Server mod
 
 That's it! Start SPT Server, then launch the game.
 
@@ -73,7 +74,7 @@ Step 1: Delete the client mod folder:
    BepInEx/plugins/Blackhorse311-KeepStartingGear/
 
 Step 2: Delete the server mod folder:
-   user/mods/Blackhorse311-KeepStartingGear/
+   SPT/user/mods/Blackhorse311-KeepStartingGear/
 
 Step 3 (optional): Delete the config file:
    BepInEx/config/com.blackhorse311.keepstartinggear.cfg

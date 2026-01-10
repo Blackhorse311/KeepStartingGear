@@ -18,6 +18,10 @@ bin/BepInEx/plugins/Blackhorse311-KeepStartingGear/*
 src/servermod/bin/
 src/servermod/obj/
 
+# Ignore test build output
+src/tests/bin/
+src/tests/obj/
+
 # Visual Studio
 .vs/
 *.user
@@ -48,8 +52,11 @@ IMPLEMENTATION_PLAN.md
 CONTEXT_FOR_*.md
 TESTING_*.md
 .*settings*/
+CLAUDE.md
+RELEASE_CHECKLIST.md
+ISSUES.md
 
-# Development tools
+# Local development tools
 .claude/
 
 # IDE working directories
@@ -57,8 +64,19 @@ TESTING_*.md
 
 # Release packages (distributed separately)
 release/
-*.zip
+
+# Research and reference materials (third-party code)
+research/
+
+# Problem logs and debug files
+Problem Logs from Forge/
+
+# Loose build artifacts (should be in bin/)
+Blackhorse311.KeepStartingGear.dll
+Blackhorse311.KeepStartingGear.Server.dll
 
 # Temp files
 nul
+*.zip
+%TEMP%*
 

@@ -54,13 +54,13 @@ jobs:
     - name: Create release structure
       run: |
         mkdir -p release/BepInEx/plugins/Blackhorse311-KeepStartingGear
-        mkdir -p release/user/mods/Blackhorse311-KeepStartingGear
+        mkdir -p release/SPT/user/mods/Blackhorse311-KeepStartingGear
 
         # Client mod - use pre-built DLL from bin folder
         cp bin/BepInEx/plugins/Blackhorse311-KeepStartingGear/Blackhorse311.KeepStartingGear.dll release/BepInEx/plugins/Blackhorse311-KeepStartingGear/
 
-        # Server mod - use freshly built DLL
-        cp src/servermod/bin/Release/net9.0/Blackhorse311.KeepStartingGear.Server.dll release/user/mods/Blackhorse311-KeepStartingGear/
+        # Server mod - use freshly built DLL (SPT 4.x folder structure)
+        cp src/servermod/bin/Release/net9.0/Blackhorse311.KeepStartingGear.Server.dll release/SPT/user/mods/Blackhorse311-KeepStartingGear/
 
         # Documentation
         cp LICENSE release/

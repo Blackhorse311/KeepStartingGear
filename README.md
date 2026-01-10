@@ -1,54 +1,50 @@
 # Keep Starting Gear
 
-**Version:** 1.4.8
-**Author:** Blackhorse311
-**License:** MIT
-**SPT Compatibility:** 4.0.x (tested on 4.0.8)
+**The cure for gear fear.** Protect your loadout. Die without consequences.
 
-A mod for SPT that automatically protects your starting gear. Die in raid? Your equipment is restored. No more gear fear!
-
----
-
-## Features
-
-### Core Features
-- **Automatic Snapshots**: Your gear is automatically saved when you enter a raid (default behavior)
-- **Death Protection**: If you die, your saved equipment is automatically restored
-- **Server-Side Restoration**: No "Run-Through" penalty - restoration happens before death processing
-- **Modded Items Support**: Works with any modded weapons, armor, and equipment
-- **Sound Feedback**: Plays a satisfying sound when snapshots are taken
-
-### Snapshot Modes
-Choose how you want snapshots to work:
-- **Auto Only** (Default): Automatic snapshot at raid start, no manual snapshots
-- **Auto + Manual**: Automatic snapshot at raid start, plus manual snapshots via keybind
-- **Manual Only**: Full control - only saves when you press the keybind
-
-### Protection Options
-- **FIR Protection**: Optionally exclude Found-in-Raid items from snapshots (prevents duplication exploits)
-- **Insurance Integration**: Optionally exclude insured items (let insurance handle them normally)
-- **Map Transfer Protection**: Choose whether to re-snapshot when transferring between maps or keep original
-
-### Quick Setup Presets
-- **Casual**: Maximum protection with minimal hassle - auto-snapshot, all items protected
-- **Hardcore**: More risk, more control - manual snapshots only, FIR & insured items excluded
+[![SPT 4.0.x](https://img.shields.io/badge/SPT-4.0.x-green.svg)](https://forge.sp-tarkov.com)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![VirusTotal](https://img.shields.io/badge/VirusTotal-0%2F70-brightgreen.svg)](https://www.virustotal.com/gui/file/ff232a9db482b915d31ac82ac262af5379372e27698f35c82bf03deb668d3924)
 
 ---
 
-## Requirements
+## What It Does
 
-- SPT 4.0.x (tested on 4.0.8)
-- BepInEx 5.x (included with SPT)
+Keep Starting Gear saves your equipment when you enter a raid and restores it if you die. Extract successfully? Keep your loot. Die? Get your starting gear back.
+
+**No Run-Through penalty. No exploits. Just protection.**
+
+### 30 Seconds to Understand
+
+```
+Enter Raid → Gear auto-saved → Die → Gear restored
+                              → Extract → Keep your loot
+```
 
 ---
 
-## Installation
+## Key Features
 
-### Automatic (Recommended)
+| Feature | Description |
+|---------|-------------|
+| **Automatic Snapshots** | Gear saved at raid start (default) or manually via keybind |
+| **Full Restoration** | Durability, ammo counts, medical uses, armor plates - all preserved |
+| **No Penalties** | Server-side restoration bypasses "Run-Through" status |
+| **Slot Control** | Protect exactly what you want - 16 individual slot toggles |
+| **Modded Items** | Works with any custom weapons, armor, and equipment |
+| **SVM Compatible** | Works with Server Value Modifier (requires specific settings) |
+
+---
+
+## Quick Start
+
+### Installation
+
+**Automatic (Recommended)**
 
 Install via The Forge mod manager.
 
-### Manual Installation
+**Manual Installation**
 
 1. Download the latest release
 2. Extract the archive directly into your SPT root folder (where SPT.Server.exe is located)
@@ -61,68 +57,81 @@ Install via The Forge mod manager.
 │       └── Blackhorse311-KeepStartingGear/
 │           ├── Blackhorse311.KeepStartingGear.dll
 │           └── snapshots/  (created automatically)
-├── user/
-│   └── mods/
-│       └── Blackhorse311-KeepStartingGear/
-│           └── Blackhorse311.KeepStartingGear.Server.dll
+├── SPT/
+│   └── user/
+│       └── mods/
+│           └── Blackhorse311-KeepStartingGear/
+│               └── Blackhorse311.KeepStartingGear.Server.dll
 └── SPT.Server.exe
 ```
 
----
+### Default Behavior
 
-## Usage
+1. **Enter raid** - green notification confirms snapshot
+2. **Die** - gear automatically restored
+3. **Extract** - snapshot cleared, loot kept
 
-### Default Behavior (Casual Mode)
-1. **Enter a raid** - your gear is automatically saved
-2. A green notification confirms: "Auto-Snapshot Saved - X items protected"
-3. If you **die**, your equipment is automatically restored
-4. If you **extract successfully**, the snapshot is cleared
+### Configuration
 
-### Manual Mode
-1. **Enter a raid** with the gear you want to protect
-2. **Press Ctrl+Alt+F8** (default keybind) to create a snapshot
-3. A green notification confirms the snapshot
-4. If you **die**, your saved equipment is restored
+Press **F12** → Find "Keep Starting Gear" → Adjust settings
 
 ---
 
-## Configuration
+## Playstyle Presets
+
+| Preset | Description |
+|--------|-------------|
+| **Casual** (Default) | Maximum protection, zero hassle. Auto-snapshot at raid start, all slots protected. |
+| **Hardcore** | Manual snapshots only. Exclude Found-in-Raid and insured items. Risk what you find, protect what you bring. |
+| **Custom** | Fine-tune every setting: snapshot mode, individual slots, keybinds, notifications. |
+
+---
+
+## Snapshot Modes
+
+| Mode | Behavior |
+|------|----------|
+| **Auto Only** (Default) | Automatic snapshot at raid start, no manual snapshots |
+| **Auto + Manual** | Automatic snapshot at raid start, plus manual snapshots via keybind |
+| **Manual Only** | Full control - only saves when you press the keybind (Ctrl+Alt+F8) |
+
+---
+
+## Protection Options
+
+| Option | Description |
+|--------|-------------|
+| **FIR Protection** | Exclude Found-in-Raid items from snapshots (prevents duplication exploits) |
+| **Insurance Integration** | Exclude insured items (let insurance handle them normally) |
+| **Map Transfer Protection** | Choose whether to re-snapshot when transferring between maps |
+
+---
+
+## Configuration Reference
 
 Access mod settings via **F12** (BepInEx Configuration Manager) or edit the config file directly.
 
 Config file location: `BepInEx/config/com.blackhorse311.keepstartinggear.cfg`
 
-### 0. Quick Setup
-
-| Setting | Options | Description |
-|---------|---------|-------------|
-| Configuration Preset | Casual / Hardcore / Custom | Quick setup for different playstyles |
-
-### 1. General
+### Snapshot Behavior
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| Enable KSG Mod | true | Master switch to enable/disable the mod |
-
-### 2. Snapshot Behavior
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| Snapshot Mode | Auto Only | When snapshots are taken (Auto Only / Auto+Manual / Manual Only) |
-| Max Manual Snapshots | 1 | Maximum manual snapshots per raid in Auto+Manual mode (1-10) |
-| Protect FIR Items | false | Exclude Found-in-Raid items from snapshots |
+| Snapshot Mode | Auto Only | When snapshots are taken |
+| Max Manual Snapshots | 1 | Manual snapshots allowed per raid (1-10) |
+| Protect FIR Items | false | Exclude Found-in-Raid items |
 | Exclude Insured Items | false | Let insurance handle insured items |
 | Re-Snapshot on Map Transfer | false | Take new snapshot when transferring maps |
-| Play Snapshot Sound | true | Play sound effect when snapshot is taken |
-| Warn on Snapshot Overwrite | true | Show warning when overwriting existing snapshot |
+| Play Snapshot Sound | true | Audio feedback when snapshot is taken |
+| Show Notifications | true | On-screen notifications |
 
-### 3. Keybind
+### Keybind
 
 | Setting | Default | Description |
 |---------|---------|-------------|
 | Manual Snapshot Keybind | Ctrl+Alt+F8 | Keybind for manual snapshots |
 
-### 4. Inventory Slots
+### Inventory Slots
 
 Every equipment slot can be individually enabled or disabled. All default to **true**.
 
@@ -144,14 +153,6 @@ Every equipment slot can be individually enabled or disabled. All default to **t
 | Secured Container | Secure container contents |
 | Compass | Navigation |
 | Special Slot 1-3 | Injectors, stims |
-
-### 5. Logging
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| Debug Mode | false | Enable verbose logging |
-| Log Snapshot Creation | true | Log when snapshots are created |
-| Log Snapshot Restoration | true | Log when snapshots are restored |
 
 ---
 
@@ -180,80 +181,41 @@ Settings are locked when a raid starts. Changing snapshot mode mid-raid shows a 
 
 ## Compatibility
 
-- **SPT Version**: 4.0.x (tested on 4.0.8)
-- **Fika**: Not tested - may not work in multiplayer scenarios
-- **Other Mods**: Should be compatible with most mods, including mods that add custom items
-
-### Mod Compatibility
-
 | Mod | Status | Notes |
 |-----|--------|-------|
-| **SVM (Server Value Modifier)** | **Compatible with Required Settings** | See detailed instructions below |
+| **SPT 4.0.x** | ✅ Supported | Tested on 4.0.11 |
+| **SVM** | ✅ Compatible | Disable Softcore Mode & Safe Exit |
+| **Fika** | ❌ Not Supported | Single-player only |
+| **Custom Items** | ✅ Full Support | Works with any modded gear |
 
 ---
 
-### ⚠️ SVM (Server Value Modifier) Compatibility - IMPORTANT
+## SVM (Server Value Modifier) Compatibility
 
 If you use SVM alongside Keep Starting Gear, you **MUST** configure SVM correctly or you will experience issues like:
 - Gear not restoring on death
 - Duplicate items in inventory
-- Profile corruption
 - Secure container disappearing
 
-#### Required SVM Settings
-
-In SVM's configuration, navigate to **Raid Settings** and ensure:
+### Required SVM Settings
 
 | Setting | Required Value | Reason |
 |---------|---------------|--------|
-| **Safe Exit** | **OFF (Disabled)** | Interferes with death detection and raid end processing |
-| **Softcore Mode** | **OFF (Disabled)** | Conflicts with KSG's gear restoration system |
+| **Safe Exit** | **OFF** | Interferes with death detection |
+| **Softcore Mode** | **OFF** | Conflicts with gear restoration |
 
-#### SVM "Inventory and Items" Category Warning
-
-Settings in SVM's **"Inventory and Items"** category may interfere with Keep Starting Gear. These include settings that modify:
-- Item loss on death
-- Insurance behavior
-- Secure container behavior
-- Inventory modifications
-
-**Use these settings at your own discretion.** If you enable SVM inventory-related settings and also use Keep Starting Gear, you may experience unexpected behavior including **loss of inventory**. We cannot provide support for issues caused by conflicting SVM settings.
-
-#### How to Configure SVM
-
-1. Open your SPT launcher or server
-2. Access SVM's configuration (check SVM's documentation for location)
-3. Find **Raid Settings** section
-4. Set **Safe Exit = OFF**
-5. Set **Softcore Mode = OFF**
-6. Save and restart the server
-
-#### Still Having Issues?
-
-If you've disabled Safe Exit and Softcore Mode but still have problems:
-1. Try disabling ALL SVM "Inventory and Items" settings temporarily
-2. Test if Keep Starting Gear works correctly
-3. Re-enable SVM settings one at a time to identify the conflict
-4. Report the specific conflicting setting on our GitHub issues page
+Settings in SVM's **"Inventory and Items"** category may also interfere. If you experience issues, disable these settings and re-enable one at a time to identify conflicts.
 
 ---
 
 ## Troubleshooting
 
-### Snapshot not saving
-- Ensure the mod is enabled in F12 settings
-- Check that you're in Manual or Auto+Manual mode if using keybind
-- Look for errors in the BepInEx console
-
-### Inventory not restoring
-- Verify both client and server components are installed
-- Check the SPT server console for error messages
-- Ensure a snapshot exists (check the snapshots folder)
-
-### Items missing from snapshot
-- Check that the relevant inventory slot is enabled in settings
-- FIR items are excluded if "Protect FIR Items" is enabled
-- Insured items are excluded if "Exclude Insured Items" is enabled
+| Problem | Solution |
+|---------|----------|
+| Snapshot not saving | Ensure mod is enabled in F12 settings. Check BepInEx console for errors. |
+| Gear not restoring | Verify both client AND server mods are installed. Check server console. |
+| Items missing | Check that the slot is enabled. FIR/insured items may be excluded by settings. |
+| SVM conflicts | Disable Safe Exit and Softcore Mode in SVM. |
 
 ---
 
@@ -268,13 +230,22 @@ If you've disabled Safe Exit and Softcore Mode but still have problems:
 ### Build Steps
 
 1. Clone the repository
-2. Update the reference paths in the `.csproj` files to match your SPT installation
+2. Set `SPT_PATH` environment variable to your SPT installation, or use `-p:SptPath="your/path"`
 3. Build the solution:
 
 ```bash
-dotnet build src/server/Blackhorse311.KeepStartingGear.csproj
+dotnet build src/server/Blackhorse311.KeepStartingGear.csproj -p:SptPath="C:/SPT"
 dotnet build src/servermod/Blackhorse311.KeepStartingGear.Server.csproj
 ```
+
+---
+
+## Security
+
+Each release includes a VirusTotal scan:
+- **v1.4.9**: [VirusTotal Scan](https://www.virustotal.com/gui/file/ff232a9db482b915d31ac82ac262af5379372e27698f35c82bf03deb668d3924) - 0/70 clean
+
+Source code is available on GitHub for independent verification and building.
 
 ---
 
@@ -286,16 +257,18 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Credits
 
-- **Author**: Blackhorse311
-- **SPT Team**: For the amazing SPT project
-- **BepInEx Team**: For the modding framework
+**Author:** Blackhorse311
+
+**Thanks to:**
+- SPT Team - For the amazing SPT project
+- BepInEx Team - For the modding framework
 
 ### Community Contributors
 
 Thanks to everyone who reported bugs and helped improve the mod:
 
 - **@Troyoza** - Reported hardcoded paths and character screen bounce issues
-- **@Wolthon** - Provided detailed logs for restoration flow debugging, reported grid contents capture issue
+- **@Wolthon** - Provided detailed logs for restoration flow debugging
 - **@rSlade** - Early testing and feedback
 - **@20fpsguy** - Reported scav raid snapshot saving and false extraction detection
 - **@Recker** - Reported secure container deletion, ammo stacks, and empty slots issues
@@ -303,37 +276,39 @@ Thanks to everyone who reported bugs and helped improve the mod:
 - **@immortal_wombat** - Reported medkit, armor durability, and armor plates issues
 - **@Alcorsa** - Reported SPT 4.0.8 compatibility issue
 - **@calafex** - Reported dogtag metadata and Surv12 restoration issues
-- **@rimmyjob** - Reported secure container deletion when disabled (GitHub #4)
+- **@rimmyjob** - Reported secure container and magazine ammo bugs
 - **@Matheus** - Reported gamma container disappearing during raid loading
-- **@wolthon** - Reported secure container loss with disabled setting
 - **@zezaovlr** - Reported ammo/grenade restoration issue
-- **@Toireht** - Reported version mismatch issue
-- **@L4Z3RB1** - Reported version mismatch via GitHub
+- **@Toireht, @L4Z3RB1** - Reported version mismatch issues
 - **@kurdamir2** - Reported snapshot not clearing after extraction
 - **@andryi2509** - Reported SVM detection and settings issues
 - **@trollcze, @cykablyat, @benadryldealer** - Reported duplicate item crashes
 - **@zezika, @Bert** - Reported secure container issues
+- **@dilirity** - Identified folder structure issue
+- **@Vafelz** - Requested notification disable option
+- **@najix, @katzenmadchenaufbier, @Alake, @stiffe0114, @Buszman** - Reported various issues on Forge
+
+*Community-tested with 30+ bug fixes since v1.0.*
 
 ---
 
 ## Changelog
 
-See [CHANGELOG.md](CHANGELOG.md) for version history.
+See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
 ---
 
 ## Support
 
-If you encounter bugs or have suggestions:
-
 ### Bug Reports
-Please use our [GitHub Issue Tracker](https://github.com/Blackhorse311/KeepStartingGear/issues) with the bug report template. You'll be asked to provide:
-- Your SPT and mod versions
-- Steps to reproduce the issue
-- **Client log**: `BepInEx/LogOutput.log`
-- **Server log**: `SPT/user/logs/` (most recent file)
-- **Snapshot file** (if applicable): `BepInEx/plugins/Blackhorse311-KeepStartingGear/snapshots/`
 
-### Community Support
-- [The Forge Mod Page](https://forge.sp-tarkov.com/mod/2470/keep-starting-gear) - Leave comments and feedback
+Please use our [GitHub Issue Tracker](https://github.com/Blackhorse311/KeepStartingGear/issues) with the bug report template. Include:
+- SPT and mod versions
+- Steps to reproduce
+- Client log: `BepInEx/LogOutput.log`
+- Server log: `SPT/user/logs/`
+
+### Community
+
+- [The Forge](https://forge.sp-tarkov.com/mod/2470/keep-starting-gear) - Mod page, comments, feedback
 - [SPT Discord](https://discord.gg/spt) - Community help and discussion

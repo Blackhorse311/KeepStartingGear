@@ -5,6 +5,51 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.9] - 2025-01-10
+
+### Fixed
+
+- **High Capacity Magazine Ammo Bug**: Fixed critical issue where large magazines (100-round boxes, X-25s, X-FALs, RPD Buben) only partially restored ammo on death (e.g., 100 rounds → 20 rounds). The root cause was that `LocationIndex` for cartridge positions was marked with `[JsonIgnore]`, preventing multi-stack magazines from serializing position data correctly. Added polymorphic `LocationData` property that correctly serializes either grid positions (objects) or cartridge indices (integers). (Reported by @rimmyjob via GitHub #13)
+
+- **Archive Folder Structure for SPT 4.x**: Fixed release archive using SPT 3.x folder structure (`user/mods/`) instead of SPT 4.x structure (`SPT/user/mods/`). This was causing installation failures where the server mod wasn't found. Many users reported the mod "not working" due to this issue. (Reported by @dilirity via GitHub #12, @najix, @Matheus, @katzenmadchenaufbier, @Alake, @stiffe0114 on Forge)
+
+- **Stale Snapshots After Transit Extracts**: Fixed snapshots not being cleared when using Transit extracts (car extracts, co-op extracts). The client-side code only treated `Survived` and `Runner` as successful extractions, but not `Transit`. This caused old snapshots to persist and be restored in future raids. (Reported by @Buszman, @kurdamir2 on Forge)
+
+### Added
+
+- **Disable On-Screen Notifications Option**: Added "Show On-Screen Notifications" setting (default: true) that allows users to disable the visual popup notifications while keeping the snapshot sound. Useful for players who want less on-screen clutter. (Requested by @Vafelz via GitHub #14)
+
+### Changed
+
+- **SPT 4.0.11 Compatibility**: Updated server NuGet packages from 4.0.8 to 4.0.11 for latest SPT compatibility.
+
+### Technical
+
+- **Polymorphic Location Serialization**: `SerializedItem` now uses a computed `LocationData` property that returns either an `ItemLocation` object (for grid items) or an integer (for magazine cartridges). This fixes the JSON serialization issue where cartridge positions were lost.
+
+- **Server-Side Location Parsing**: `SnapshotItem.Location` is now a `JsonElement?` type with helper methods `GetLocation()` and `GetLocationIndex()` to handle polymorphic deserialization of location data.
+
+- **Transit Exit Status Handling**: `RaidEndPatch.cs` now includes `ExitStatus.Transit` in the list of successful extraction statuses that trigger snapshot cleanup.
+
+### Clarifications
+
+- **FiR Status on Death**: Clarified that items in secure container losing FiR status on death is **standard Tarkov behavior**, not a mod bug. The mod's `ProtectFIRItems` setting controls whether FiR items are captured in snapshots (to prevent duplication exploits), not whether FiR status is preserved after death.
+
+### Contributors
+
+- **@rimmyjob** - Reported high capacity magazine ammo bug with detailed logs via GitHub #13
+- **@dilirity** - Identified folder structure issue and provided fix via GitHub #12
+- **@Vafelz** - Requested notification disable option via GitHub #14
+- **@najix, @Matheus, @katzenmadchenaufbier, @Alake, @stiffe0114** - Reported installation/folder structure issues on Forge
+- **@Buszman, @kurdamir2** - Reported stale snapshot issues on Forge
+- **@Bert** - Reported FiR status behavior (clarified as expected Tarkov behavior)
+
+### Compatibility
+
+- SPT 4.0.x (tested on 4.0.11)
+
+---
+
 ## [1.4.8] - 2025-12-23
 
 ### Fixed

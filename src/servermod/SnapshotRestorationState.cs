@@ -12,9 +12,13 @@
 // SOLUTION:
 // 1. RaidEndInterceptor restores inventory from snapshot
 // 2. RaidEndInterceptor sets InventoryRestoredFromSnapshot = true
-// 3. CustomInRaidHelper.DeleteInventory checks this flag
-// 4. If flag is true, skip the deletion (preserve restored items)
-// 5. Reset the flag after processing
+// 3. CustomInRaidHelper.DeleteInventory checks AND CONSUMES the flag
+// 4. If flag was true, skip the deletion (preserve restored items)
+//
+// RACE CONDITION FIX:
+// The flag is now consumed atomically by TryConsume() which both checks
+// and resets the flag in a single operation. This prevents the race where
+// the flag could be reset in multiple places.
 //
 // THREAD SAFETY:
 // Uses ThreadLocal<bool> to ensure each request thread has its own flag value.
@@ -47,8 +51,8 @@ namespace Blackhorse311.KeepStartingGear.Server;
 ///   <item>RaidEndInterceptor sets InventoryRestoredFromSnapshot = true</item>
 ///   <item>Normal death processing continues...</item>
 ///   <item>SPT calls InRaidHelper.DeleteInventory()</item>
-///   <item>CustomInRaidHelper checks flag, sees it's true, skips deletion</item>
-///   <item>Flag is reset for the next request</item>
+///   <item>CustomInRaidHelper calls TryConsume(), which returns true and resets flag</item>
+///   <item>Deletion is skipped</item>
 /// </list>
 /// </remarks>
 public static class SnapshotRestorationState
@@ -69,40 +73,90 @@ public static class SnapshotRestorationState
     /// </remarks>
     private static readonly ThreadLocal<bool> _inventoryRestoredFromSnapshot = new(() => false);
 
+    /// <summary>
+    /// Lock object for atomic operations (belt-and-suspenders with ThreadLocal).
+    /// </summary>
+    private static readonly object _lock = new();
+
     // ========================================================================
     // Public API
     // ========================================================================
 
     /// <summary>
-    /// Gets or sets whether the inventory was restored from a snapshot.
-    /// When true, CustomInRaidHelper.DeleteInventory will skip deletion.
+    /// Gets whether the inventory was restored from a snapshot.
+    /// Use <see cref="TryConsume"/> to atomically check and reset this flag.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Set this to true immediately after restoring inventory from snapshot.
-    /// The CustomInRaidHelper will check this before deleting inventory.
-    /// </para>
-    /// <para>
-    /// <b>Important:</b> This flag is automatically reset by CustomInRaidHelper
-    /// after checking it, so it only affects the current request.
+    /// <b>Warning:</b> Prefer using <see cref="TryConsume"/> instead of reading
+    /// this property directly, as TryConsume handles the check-and-reset atomically.
     /// </para>
     /// </remarks>
     public static bool InventoryRestoredFromSnapshot
     {
         get => _inventoryRestoredFromSnapshot.Value;
-        set => _inventoryRestoredFromSnapshot.Value = value;
+    }
+
+    /// <summary>
+    /// Sets the restoration flag to true.
+    /// Call this after successfully restoring inventory from a snapshot.
+    /// </summary>
+    /// <remarks>
+    /// Only RaidEndInterceptor should call this method.
+    /// </remarks>
+    public static void MarkRestored()
+    {
+        lock (_lock)
+        {
+            _inventoryRestoredFromSnapshot.Value = true;
+        }
+    }
+
+    /// <summary>
+    /// Atomically checks if restoration occurred and resets the flag.
+    /// This is the ONLY method that should be used to check the flag.
+    /// </summary>
+    /// <returns>True if inventory was restored (flag was set), false otherwise.</returns>
+    /// <remarks>
+    /// <para>
+    /// This method ensures the flag is consumed exactly once, preventing
+    /// race conditions where multiple callers might try to act on the flag.
+    /// </para>
+    /// <para>
+    /// After this method returns true, subsequent calls will return false
+    /// until <see cref="MarkRestored"/> is called again.
+    /// </para>
+    /// </remarks>
+    public static bool TryConsume()
+    {
+        lock (_lock)
+        {
+            bool wasRestored = _inventoryRestoredFromSnapshot.Value;
+            _inventoryRestoredFromSnapshot.Value = false;
+            return wasRestored;
+        }
     }
 
     /// <summary>
     /// Resets the restoration flag to false.
-    /// Should be called at the end of request processing.
     /// </summary>
     /// <remarks>
-    /// This ensures the flag doesn't persist and affect future requests.
-    /// Called by CustomInRaidHelper after checking/using the flag.
+    /// <para>
+    /// <b>Deprecated:</b> Prefer using <see cref="TryConsume"/> which atomically
+    /// checks and resets the flag in a single operation.
+    /// </para>
+    /// <para>
+    /// This method is kept for backwards compatibility but should not be used
+    /// in new code. Using this in combination with reading InventoryRestoredFromSnapshot
+    /// creates a race condition.
+    /// </para>
     /// </remarks>
+    [Obsolete("Use TryConsume() instead for atomic check-and-reset")]
     public static void Reset()
     {
-        _inventoryRestoredFromSnapshot.Value = false;
+        lock (_lock)
+        {
+            _inventoryRestoredFromSnapshot.Value = false;
+        }
     }
 }

@@ -352,10 +352,12 @@ public class InventoryService
                     Plugin.Log.LogDebug("First pass: Collecting slot items...");
                 foreach (var slot in slots)
                 {
-                    var slotNameProp = slot.GetType().GetProperty("Name");
+                    // Use cached reflection lookups for better performance
+                    var slotType = slot.GetType();
+                    var slotNameProp = ReflectionCache.GetProperty(slotType, "Name");
                     var slotName = slotNameProp?.GetValue(slot)?.ToString() ?? "Unknown";
 
-                    var containedItemProp = slot.GetType().GetProperty("ContainedItem");
+                    var containedItemProp = ReflectionCache.GetProperty(slotType, "ContainedItem");
                     var containedItem = containedItemProp?.GetValue(slot) as Item;
 
                     if (containedItem != null)
@@ -520,7 +522,7 @@ public class InventoryService
 
                         // Check for Grids field (containers like backpacks, rigs, pockets)
                         // Note: In EFT, Grids is a PUBLIC FIELD, not a property!
-                        var gridsField = itemType.GetField("Grids", BindingFlags.Public | BindingFlags.Instance);
+                        var gridsField = ReflectionCache.GetField(itemType, "Grids", BindingFlags.Public | BindingFlags.Instance);
                         if (gridsField != null)
                         {
                             if (gridPass == 1 && verbose) Plugin.Log.LogDebug($"[GRID DEBUG]   Has Grids field");
@@ -534,15 +536,16 @@ public class InventoryService
                                     gridCount++;
                                     if (grid == null) continue;
 
-                                    // Get grid ID for logging
-                                    var gridIdProp = grid.GetType().GetProperty("ID");
+                                    // Get grid ID for logging (use cached reflection)
+                                    var gridType = grid.GetType();
+                                    var gridIdProp = ReflectionCache.GetProperty(gridType, "ID");
                                     var gridId = gridIdProp?.GetValue(grid)?.ToString() ?? "unknown";
 
-                                    if (gridPass == 1 && verbose) Plugin.Log.LogDebug($"[GRID DEBUG]   Grid {gridCount}: ID={gridId}, Type={grid.GetType().Name}");
+                                    if (gridPass == 1 && verbose) Plugin.Log.LogDebug($"[GRID DEBUG]   Grid {gridCount}: ID={gridId}, Type={gridType.Name}");
 
                                     // Try ItemCollection first (contains KeyValuePair<Item, LocationInGrid>)
-                                    var itemCollectionProp = grid.GetType().GetProperty("ItemCollection");
-                                    var containedItemsProp = grid.GetType().GetProperty("ContainedItems");
+                                    var itemCollectionProp = ReflectionCache.GetProperty(gridType, "ItemCollection");
+                                    var containedItemsProp = ReflectionCache.GetProperty(gridType, "ContainedItems");
                                     var collectionProp = itemCollectionProp ?? containedItemsProp;
 
                                     if (collectionProp != null)
@@ -556,8 +559,8 @@ public class InventoryService
                                                 itemCount++;
                                                 // kvp is KeyValuePair<Item, LocationInGrid>
                                                 var kvpType = kvp.GetType();
-                                                var keyProp = kvpType.GetProperty("Key");
-                                                var valueProp = kvpType.GetProperty("Value");
+                                                var keyProp = ReflectionCache.GetProperty(kvpType, "Key");
+                                                var valueProp = ReflectionCache.GetProperty(kvpType, "Value");
 
                                                 if (keyProp != null && valueProp != null)
                                                 {
@@ -569,34 +572,16 @@ public class InventoryService
                                                         var serializedItem = ConvertToSerializedItem(childItem);
                                                         if (serializedItem != null)
                                                         {
-                                                            // Extract location from LocationInGrid
+                                                            // Extract location from LocationInGrid (use cached reflection)
                                                             if (locationInGrid != null)
                                                             {
                                                                 var locType = locationInGrid.GetType();
 
                                                                 // Try to get x, y, r values - could be properties or fields
-                                                                object xVal = null, yVal = null, rVal = null;
-
-                                                                var xPropInfo = locType.GetProperty("x");
-                                                                var xFieldInfo = locType.GetField("x");
-                                                                if (xPropInfo != null)
-                                                                    xVal = xPropInfo.GetValue(locationInGrid);
-                                                                else if (xFieldInfo != null)
-                                                                    xVal = xFieldInfo.GetValue(locationInGrid);
-
-                                                                var yPropInfo = locType.GetProperty("y");
-                                                                var yFieldInfo = locType.GetField("y");
-                                                                if (yPropInfo != null)
-                                                                    yVal = yPropInfo.GetValue(locationInGrid);
-                                                                else if (yFieldInfo != null)
-                                                                    yVal = yFieldInfo.GetValue(locationInGrid);
-
-                                                                var rPropInfo = locType.GetProperty("r");
-                                                                var rFieldInfo = locType.GetField("r");
-                                                                if (rPropInfo != null)
-                                                                    rVal = rPropInfo.GetValue(locationInGrid);
-                                                                else if (rFieldInfo != null)
-                                                                    rVal = rFieldInfo.GetValue(locationInGrid);
+                                                                // Use ReflectionCache.GetMemberValue for cleaner access
+                                                                var xVal = ReflectionCache.GetMemberValue(locationInGrid, "x");
+                                                                var yVal = ReflectionCache.GetMemberValue(locationInGrid, "y");
+                                                                var rVal = ReflectionCache.GetMemberValue(locationInGrid, "r");
 
                                                                 if (xVal != null && yVal != null)
                                                                 {
@@ -945,7 +930,8 @@ public class InventoryService
             // ================================================================
 
             // Try to get Grids FIELD via reflection (in EFT, Grids is a public field, not a property!)
-            var gridsField = itemType.GetField("Grids", BindingFlags.Public | BindingFlags.Instance);
+            // Using cached reflection for performance
+            var gridsField = ReflectionCache.GetField(itemType, "Grids", BindingFlags.Public | BindingFlags.Instance);
             if (gridsField != null)
             {
                 if (verbose) Plugin.Log.LogDebug($"[VERBOSE] Found Grids field on {itemType.Name}");
@@ -961,7 +947,7 @@ public class InventoryService
 
                         if (verbose) Plugin.Log.LogDebug($"[VERBOSE] Processing grid {gridCount}, type: {grid.GetType().Name}");
 
-                        var gridItemsProperty = grid.GetType().GetProperty("Items");
+                        var gridItemsProperty = ReflectionCache.GetProperty(grid.GetType(), "Items");
                         if (gridItemsProperty != null)
                         {
                             var gridItems = gridItemsProperty.GetValue(grid) as System.Collections.IEnumerable;
@@ -1007,8 +993,8 @@ public class InventoryService
                 Plugin.Log.LogDebug($"[VERBOSE] No Grids field on {itemType.Name}");
             }
 
-            // Try to get Slots property via reflection
-            var slotsProperty = itemType.GetProperty("Slots");
+            // Try to get Slots property via reflection (using cached reflection for performance)
+            var slotsProperty = ReflectionCache.GetProperty(itemType, "Slots");
             if (slotsProperty != null)
             {
                 if (verbose) Plugin.Log.LogDebug($"[VERBOSE] Found Slots property on {itemType.Name}");
@@ -1022,11 +1008,12 @@ public class InventoryService
                         slotCount++;
                         if (slot == null) continue;
 
-                        // Get slot name for logging
-                        var slotNameProp = slot.GetType().GetProperty("Name");
+                        // Get slot name for logging (use cached reflection)
+                        var slotType = slot.GetType();
+                        var slotNameProp = ReflectionCache.GetProperty(slotType, "Name");
                         var slotName = slotNameProp?.GetValue(slot)?.ToString() ?? "unknown";
 
-                        var containedItemProperty = slot.GetType().GetProperty("ContainedItem");
+                        var containedItemProperty = ReflectionCache.GetProperty(slotType, "ContainedItem");
                         if (containedItemProperty != null)
                         {
                             var containedItem = containedItemProperty.GetValue(slot) as Item;
@@ -1063,8 +1050,8 @@ public class InventoryService
             {
                 Plugin.Log.LogDebug($"[MAGAZINE] Found magazine: {item.TemplateId}, checking for Cartridges...");
 
-                // Try to get the Cartridges property via reflection
-                var cartridgesProp = itemType.GetProperty("Cartridges");
+                // Try to get the Cartridges property via reflection (using cached reflection)
+                var cartridgesProp = ReflectionCache.GetProperty(itemType, "Cartridges");
                 if (cartridgesProp != null)
                 {
                     var cartridges = cartridgesProp.GetValue(item);
@@ -1073,8 +1060,8 @@ public class InventoryService
                         Plugin.Log.LogDebug($"[MAGAZINE] Found Cartridges property, type: {cartridges.GetType().Name}");
 
                         // Cartridges is typically a StackSlot or similar container
-                        // Try to get Items property from it
-                        var itemsProp = cartridges.GetType().GetProperty("Items");
+                        // Try to get Items property from it (using cached reflection)
+                        var itemsProp = ReflectionCache.GetProperty(cartridges.GetType(), "Items");
                         if (itemsProp != null)
                         {
                             var ammoItems = itemsProp.GetValue(cartridges) as IEnumerable<Item>;
@@ -1154,7 +1141,7 @@ public class InventoryService
             // If enabled, skip items that are marked as Found-in-Raid to prevent
             // exploiting the mod to duplicate FIR items
             // ================================================================
-            if (Settings.ProtectFIRItems.Value)
+            if (Settings.ExcludeFIRItems.Value)
             {
                 // SpawnedInSession = true means the item was found in the current raid (FIR)
                 if (item.SpawnedInSession)
@@ -1486,10 +1473,10 @@ public class InventoryService
             {
                 var itemType = item.GetType();
 
-                // Access the Components field to find MedKitComponent
+                // Access the Components field to find MedKitComponent (using cached reflection)
                 // NOTE: Check ALL items, not just those with "MedKit" in name
                 // Surgical kits (Surv12, CMS) also use MedKitComponent but have different type names
-                var componentsField = itemType.GetField("Components", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                var componentsField = ReflectionCache.GetField(itemType, "Components", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
                 if (componentsField != null)
                 {
                     var components = componentsField.GetValue(item) as System.Collections.IEnumerable;
@@ -1499,8 +1486,8 @@ public class InventoryService
                         {
                             if (comp != null && comp.GetType().Name.Contains("MedKit"))
                             {
-                                // HpResource is a FIELD on the component, not a property
-                                var hpField = comp.GetType().GetField("HpResource", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                                // HpResource is a FIELD on the component, not a property (using cached reflection)
+                                var hpField = ReflectionCache.GetField(comp.GetType(), "HpResource", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
                                 if (hpField != null)
                                 {
                                     var hp = hpField.GetValue(comp);
@@ -1529,8 +1516,8 @@ public class InventoryService
             {
                 var itemType = item.GetType();
 
-                // Access Components field to find RepairableComponent
-                var componentsField = itemType.GetField("Components", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                // Access Components field to find RepairableComponent (using cached reflection)
+                var componentsField = ReflectionCache.GetField(itemType, "Components", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
                 if (componentsField != null)
                 {
                     var components = componentsField.GetValue(item) as System.Collections.IEnumerable;
@@ -1538,11 +1525,12 @@ public class InventoryService
                     {
                         foreach (var comp in components)
                         {
-                            if (comp != null && comp.GetType().Name.Contains("Repairable"))
+                            var compType = comp?.GetType();
+                            if (compType != null && compType.Name.Contains("Repairable"))
                             {
-                                // Durability and MaxDurability are FIELDS on the component, not properties
-                                var durField = comp.GetType().GetField("Durability", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-                                var maxDurField = comp.GetType().GetField("MaxDurability", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                                // Durability and MaxDurability are FIELDS on the component (using cached reflection)
+                                var durField = ReflectionCache.GetField(compType, "Durability", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                                var maxDurField = ReflectionCache.GetField(compType, "MaxDurability", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
 
                                 if (durField != null)
                                 {
@@ -1570,19 +1558,19 @@ public class InventoryService
             }
 
             // ================================================================
-            // Capture Resource value (fuel cans, etc.)
+            // Capture Resource value (fuel cans, etc.) - using cached reflection
             // ================================================================
             try
             {
                 var itemType = item.GetType();
-                var resourceProp = itemType.GetProperty("ResourceComponent") ??
-                                   itemType.GetProperty("Resource");
+                var resourceProp = ReflectionCache.GetProperty(itemType, "ResourceComponent") ??
+                                   ReflectionCache.GetProperty(itemType, "Resource");
                 if (resourceProp != null)
                 {
                     var resourceValue = resourceProp.GetValue(item);
                     if (resourceValue != null)
                     {
-                        var valueProp = resourceValue.GetType().GetProperty("Value");
+                        var valueProp = ReflectionCache.GetProperty(resourceValue.GetType(), "Value");
                         if (valueProp != null)
                         {
                             var val = valueProp.GetValue(resourceValue);
@@ -1599,19 +1587,19 @@ public class InventoryService
             catch { /* Resource capture failed - not critical */ }
 
             // ================================================================
-            // Capture FoodDrink value
+            // Capture FoodDrink value - using cached reflection
             // ================================================================
             try
             {
                 var itemType = item.GetType();
-                var foodDrinkProp = itemType.GetProperty("FoodDrinkComponent") ??
-                                    itemType.GetProperty("FoodDrink");
+                var foodDrinkProp = ReflectionCache.GetProperty(itemType, "FoodDrinkComponent") ??
+                                    ReflectionCache.GetProperty(itemType, "FoodDrink");
                 if (foodDrinkProp != null)
                 {
                     var foodDrinkValue = foodDrinkProp.GetValue(item);
                     if (foodDrinkValue != null)
                     {
-                        var hpProp = foodDrinkValue.GetType().GetProperty("HpPercent");
+                        var hpProp = ReflectionCache.GetProperty(foodDrinkValue.GetType(), "HpPercent");
                         if (hpProp != null)
                         {
                             var hp = hpProp.GetValue(foodDrinkValue);
@@ -1644,8 +1632,8 @@ public class InventoryService
 
                 if (isDogtag)
                 {
-                    // Try to find DogtagComponent in the item's components
-                    var componentsField = itemType.GetField("Components", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                    // Try to find DogtagComponent in the item's components (using cached reflection)
+                    var componentsField = ReflectionCache.GetField(itemType, "Components", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
                     if (componentsField != null)
                     {
                         var components = componentsField.GetValue(item) as System.Collections.IEnumerable;
@@ -1653,23 +1641,24 @@ public class InventoryService
                         {
                             foreach (var comp in components)
                             {
-                                if (comp != null && comp.GetType().Name.Contains("Dogtag"))
+                                var compType = comp?.GetType();
+                                if (compType != null && compType.Name.Contains("Dogtag"))
                                 {
-                                    var compType = comp.GetType();
                                     upd.Dogtag = new UpdDogtag();
 
-                                    // Extract all dogtag properties via reflection
-                                    var accountIdField = compType.GetField("AccountId", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-                                    var profileIdField = compType.GetField("ProfileId", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-                                    var nicknameField = compType.GetField("Nickname", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-                                    var sideField = compType.GetField("Side", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-                                    var levelField = compType.GetField("Level", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-                                    var timeField = compType.GetField("Time", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-                                    var statusField = compType.GetField("Status", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-                                    var killerAccountIdField = compType.GetField("KillerAccountId", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-                                    var killerProfileIdField = compType.GetField("KillerProfileId", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-                                    var killerNameField = compType.GetField("KillerName", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-                                    var weaponNameField = compType.GetField("WeaponName", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                                    // Extract all dogtag properties via cached reflection
+                                    var bindingFlags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+                                    var accountIdField = ReflectionCache.GetField(compType, "AccountId", bindingFlags);
+                                    var profileIdField = ReflectionCache.GetField(compType, "ProfileId", bindingFlags);
+                                    var nicknameField = ReflectionCache.GetField(compType, "Nickname", bindingFlags);
+                                    var sideField = ReflectionCache.GetField(compType, "Side", bindingFlags);
+                                    var levelField = ReflectionCache.GetField(compType, "Level", bindingFlags);
+                                    var timeField = ReflectionCache.GetField(compType, "Time", bindingFlags);
+                                    var statusField = ReflectionCache.GetField(compType, "Status", bindingFlags);
+                                    var killerAccountIdField = ReflectionCache.GetField(compType, "KillerAccountId", bindingFlags);
+                                    var killerProfileIdField = ReflectionCache.GetField(compType, "KillerProfileId", bindingFlags);
+                                    var killerNameField = ReflectionCache.GetField(compType, "KillerName", bindingFlags);
+                                    var weaponNameField = ReflectionCache.GetField(compType, "WeaponName", bindingFlags);
 
                                     upd.Dogtag.AccountId = accountIdField?.GetValue(comp)?.ToString();
                                     upd.Dogtag.ProfileId = profileIdField?.GetValue(comp)?.ToString();
@@ -1697,7 +1686,7 @@ public class InventoryService
             }
 
             // ================================================================
-            // Capture Key uses remaining
+            // Capture Key uses remaining - using cached reflection
             // Some keys have limited uses before they break
             // ================================================================
             try
@@ -1707,7 +1696,7 @@ public class InventoryService
                 // Check if this is a key item
                 if (itemType.Name.Contains("Key"))
                 {
-                    var componentsField = itemType.GetField("Components", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                    var componentsField = ReflectionCache.GetField(itemType, "Components", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
                     if (componentsField != null)
                     {
                         var components = componentsField.GetValue(item) as System.Collections.IEnumerable;
@@ -1715,9 +1704,10 @@ public class InventoryService
                         {
                             foreach (var comp in components)
                             {
-                                if (comp != null && comp.GetType().Name.Contains("Key"))
+                                var compType = comp?.GetType();
+                                if (compType != null && compType.Name.Contains("Key"))
                                 {
-                                    var numberOfUsagesField = comp.GetType().GetField("NumberOfUsages", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                                    var numberOfUsagesField = ReflectionCache.GetField(compType, "NumberOfUsages", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
                                     if (numberOfUsagesField != null)
                                     {
                                         var uses = numberOfUsagesField.GetValue(comp);

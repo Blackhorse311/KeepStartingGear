@@ -23,6 +23,7 @@
 // LICENSE: MIT
 // ============================================================================
 
+using System;
 using BepInEx.Configuration;
 using System.Collections.Generic;
 using UnityEngine;
@@ -171,7 +172,17 @@ public static class Settings
     /// This prevents exploiting the mod to duplicate FIR items.
     /// Default: false (include all items)
     /// </summary>
-    public static ConfigEntry<bool> ProtectFIRItems { get; private set; }
+    /// <remarks>
+    /// Renamed from "ProtectFIRItems" to "ExcludeFIRItems" in v1.4.9 for clarity.
+    /// The old name suggested it PROTECTED FiR items, when it actually EXCLUDES them.
+    /// </remarks>
+    public static ConfigEntry<bool> ExcludeFIRItems { get; private set; }
+
+    /// <summary>
+    /// Backwards compatibility alias for ExcludeFIRItems.
+    /// </summary>
+    [Obsolete("Use ExcludeFIRItems instead. This property will be removed in a future version.")]
+    public static ConfigEntry<bool> ProtectFIRItems => ExcludeFIRItems;
 
     /// <summary>
     /// Cooldown in seconds between manual snapshots.
@@ -201,6 +212,13 @@ public static class Settings
     /// Default: true
     /// </summary>
     public static ConfigEntry<bool> PlaySnapshotSound { get; private set; }
+
+    /// <summary>
+    /// When true, shows on-screen notifications when snapshots are taken.
+    /// When false, only plays the sound (if enabled) without visual notification.
+    /// Default: true
+    /// </summary>
+    public static ConfigEntry<bool> ShowNotifications { get; private set; }
 
     /// <summary>
     /// When true, items that are insured will NOT be included in snapshots.
@@ -429,13 +447,14 @@ public static class Settings
             )
         );
 
-        ProtectFIRItems = config.Bind(
+        ExcludeFIRItems = config.Bind(
             CategorySnapshot,
-            "Protect Found-in-Raid Items",
+            "Exclude Found-in-Raid Items",
             false,
             new ConfigDescription(
                 "When enabled, items marked as Found-in-Raid will NOT be included in snapshots.\n" +
-                "This prevents exploiting the mod to duplicate FIR items.",
+                "This prevents exploiting the mod to duplicate FIR items.\n" +
+                "(Renamed from 'Protect Found-in-Raid Items' for clarity)",
                 null,
                 new ConfigurationManagerAttributes { Order = order-- }
             )
@@ -483,6 +502,18 @@ public static class Settings
             true,
             new ConfigDescription(
                 "Play a camera shutter sound when a snapshot is taken.",
+                null,
+                new ConfigurationManagerAttributes { Order = order-- }
+            )
+        );
+
+        ShowNotifications = config.Bind(
+            CategorySnapshot,
+            "Show On-Screen Notifications",
+            true,
+            new ConfigDescription(
+                "Show on-screen notifications when snapshots are taken or restored.\n" +
+                "When disabled, only the sound plays (if enabled) - no visual popups.",
                 null,
                 new ConfigurationManagerAttributes { Order = order-- }
             )
@@ -739,7 +770,7 @@ public static class Settings
     {
         // Snapshot behavior: auto-snapshot at raid start
         SnapshotModeOption.Value = SnapshotMode.AutoOnly;
-        ProtectFIRItems.Value = false;         // Save everything including FIR
+        ExcludeFIRItems.Value = false;         // Save everything including FIR
         ExcludeInsuredItems.Value = false;     // Save insured items too
         SnapshotOnMapTransfer.Value = false;   // Keep original snapshot
         PlaySnapshotSound.Value = true;        // Sound enabled
@@ -774,7 +805,7 @@ public static class Settings
     {
         // Snapshot behavior: manual only, must actively choose to save
         SnapshotModeOption.Value = SnapshotMode.ManualOnly;
-        ProtectFIRItems.Value = true;          // Don't save FIR items (prevents exploitation)
+        ExcludeFIRItems.Value = true;          // Don't save FIR items (prevents exploitation)
         ExcludeInsuredItems.Value = true;      // Let insurance handle insured items
         SnapshotOnMapTransfer.Value = false;   // Keep original snapshot
         PlaySnapshotSound.Value = true;        // Sound enabled
