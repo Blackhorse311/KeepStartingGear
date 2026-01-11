@@ -83,7 +83,7 @@ public class KeepStartingGearMod(ISptLogger<KeepStartingGearMod> logger) : IOnLo
     /// <summary>
     /// Current mod version - must match ModMetadata.Version and client Plugin.PluginVersion
     /// </summary>
-    private const string ModVersion = "1.4.9";
+    private const string ModVersion = "1.4.10";
 
     public Task OnLoad()
     {

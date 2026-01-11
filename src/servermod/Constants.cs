@@ -19,7 +19,7 @@ public static class Constants
     /// Current mod version. Update this for each release.
     /// Must match ModMetadata.Version and client Plugin.PluginVersion.
     /// </summary>
-    public const string ModVersion = "1.4.9";
+    public const string ModVersion = "1.4.10";
 
     /// <summary>
     /// Equipment container template ID - identifies the root equipment container.

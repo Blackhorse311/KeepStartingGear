@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.10] - 2026-01-11
+
+### Fixed
+
+- **Release Packaging Bug**: Fixed v1.4.9 release containing v1.4.8 client DLL. The csproj version numbers were not updated before the release build, causing version mismatch between source code and compiled binaries.
+
+### Changed
+
+- **Version Synchronization**: All version numbers (csproj, Plugin.cs, Constants.cs, ModMetadata.cs, KeepStartingGearMod.cs) are now properly synchronized to prevent future version mismatches.
+
+### Compatibility
+
+- SPT 4.0.x (tested on 4.0.11)
+
+---
+
 ## [1.4.9] - 2025-01-10
 
 ### Fixed
