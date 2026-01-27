@@ -525,4 +525,33 @@ public class ProfileService
             return null;
         }
     }
+
+    // ========================================================================
+    // Session ID
+    // ========================================================================
+
+    /// <summary>
+    /// Gets the current session ID (profile ID) for the active player.
+    /// This is used to identify which snapshot file to use.
+    /// </summary>
+    /// <returns>The session ID string, or null if not available</returns>
+    public string GetSessionId()
+    {
+        try
+        {
+            // Try to get from the most recent profile
+            string profileFilePath = GetMostRecentProfileFile();
+            if (!string.IsNullOrEmpty(profileFilePath))
+            {
+                return GetProfileId(profileFilePath);
+            }
+
+            return null;
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.LogError($"Failed to get session ID: {ex.Message}");
+            return null;
+        }
+    }
 }

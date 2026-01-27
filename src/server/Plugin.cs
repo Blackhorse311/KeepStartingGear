@@ -34,6 +34,7 @@ using System;
 using BepInEx;
 using BepInEx.Logging;
 using Blackhorse311.KeepStartingGear.Configuration;
+using Blackhorse311.KeepStartingGear.Components;
 using Blackhorse311.KeepStartingGear.Patches;
 using UnityEngine;
 
@@ -151,6 +152,20 @@ public class Plugin : BaseUnityPlugin
             new Services.SnapshotManager();
             new Services.InventoryService();
             new Services.ProfileService();
+
+            // Initialize new feature services
+            new Services.ValueCalculator();
+            new Services.SnapshotHistory();
+            new Services.LoadoutProfiles();
+            new Services.SummaryFileWatcher();
+            // Note: RestorationSummaryService is a static class and doesn't need initialization
+
+            // Initialize UI components (MonoBehaviours attached to plugin GameObject)
+            gameObject.AddComponent<NotificationOverlay>();
+            gameObject.AddComponent<AutoSnapshotMonitor>();
+            gameObject.AddComponent<ProtectionIndicator>();
+            gameObject.AddComponent<LossPreviewOverlay>();
+            gameObject.AddComponent<SummaryOverlay>();
 
             // Enable Harmony patches to hook into game events
             PatchManager.EnablePatches();

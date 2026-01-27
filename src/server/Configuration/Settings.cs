@@ -234,6 +234,47 @@ public static class Settings
     /// </summary>
     public static ConfigEntry<int> MaxManualSnapshots { get; private set; }
 
+    /// <summary>
+    /// Ruble value threshold for auto-snapshot feature.
+    /// When loot value gained exceeds this amount, automatically takes a new snapshot.
+    /// Set to 0 to disable auto-snapshot based on value.
+    /// Default: 0 (disabled)
+    /// </summary>
+    public static ConfigEntry<long> AutoSnapshotThreshold { get; private set; }
+
+    /// <summary>
+    /// Maximum number of automatic snapshots per raid based on value threshold.
+    /// Prevents excessive snapshots during loot-heavy raids.
+    /// Default: 3
+    /// </summary>
+    public static ConfigEntry<int> MaxAutoSnapshots { get; private set; }
+
+    /// <summary>
+    /// Maximum number of snapshot history entries to keep for undo functionality.
+    /// Set to 0 to disable history.
+    /// Default: 3
+    /// </summary>
+    public static ConfigEntry<int> MaxSnapshotHistory { get; private set; }
+
+    /// <summary>
+    /// Show a protection status indicator during raids.
+    /// Displays snapshot status in the corner of the screen.
+    /// Default: false
+    /// </summary>
+    public static ConfigEntry<bool> ShowProtectionIndicator { get; private set; }
+
+    /// <summary>
+    /// Show a summary overlay after death showing what was restored.
+    /// Default: true
+    /// </summary>
+    public static ConfigEntry<bool> ShowDeathSummary { get; private set; }
+
+    /// <summary>
+    /// Visual theme for notifications and overlays.
+    /// Default: Default
+    /// </summary>
+    public static ConfigEntry<int> NotificationTheme { get; private set; }
+
     #endregion
 
     // ========================================================================
@@ -249,6 +290,13 @@ public static class Settings
     /// Displayed as a single combined keybind in the config manager.
     /// </summary>
     public static ConfigEntry<KeyboardShortcut> SnapshotKeybind { get; private set; }
+
+    /// <summary>
+    /// The keyboard shortcut for the loss preview overlay.
+    /// Shows what items would be lost if you died right now.
+    /// Default: Ctrl+Alt+F9
+    /// </summary>
+    public static ConfigEntry<KeyboardShortcut> LossPreviewKeybind { get; private set; }
 
     #endregion
 
@@ -543,6 +591,77 @@ public static class Settings
             )
         );
 
+        AutoSnapshotThreshold = config.Bind(
+            CategorySnapshot,
+            "Auto-Snapshot Value Threshold",
+            0L,
+            new ConfigDescription(
+                "Automatically take a new snapshot when loot value gained exceeds this amount.\n" +
+                "Set to 0 to disable. Example: 100000 = auto-snapshot after gaining 100K rubles worth of loot.",
+                new AcceptableValueRange<long>(0, 10000000),
+                new ConfigurationManagerAttributes { Order = order-- }
+            )
+        );
+
+        MaxAutoSnapshots = config.Bind(
+            CategorySnapshot,
+            "Max Auto-Snapshots Per Raid",
+            3,
+            new ConfigDescription(
+                "Maximum number of automatic value-based snapshots per raid.\n" +
+                "Prevents excessive snapshots during loot-heavy raids.",
+                new AcceptableValueRange<int>(1, 10),
+                new ConfigurationManagerAttributes { Order = order-- }
+            )
+        );
+
+        MaxSnapshotHistory = config.Bind(
+            CategorySnapshot,
+            "Snapshot History Size",
+            3,
+            new ConfigDescription(
+                "Number of previous snapshots to keep for undo functionality.\n" +
+                "Set to 0 to disable history.",
+                new AcceptableValueRange<int>(0, 10),
+                new ConfigurationManagerAttributes { Order = order-- }
+            )
+        );
+
+        ShowProtectionIndicator = config.Bind(
+            CategorySnapshot,
+            "Show Protection Indicator",
+            false,
+            new ConfigDescription(
+                "Display a protection status indicator in the corner during raids.\n" +
+                "Shows whether a snapshot is active and how many items are protected.",
+                null,
+                new ConfigurationManagerAttributes { Order = order-- }
+            )
+        );
+
+        ShowDeathSummary = config.Bind(
+            CategorySnapshot,
+            "Show Death Summary",
+            true,
+            new ConfigDescription(
+                "Show a summary overlay after death showing what items were restored.",
+                null,
+                new ConfigurationManagerAttributes { Order = order-- }
+            )
+        );
+
+        NotificationTheme = config.Bind(
+            CategorySnapshot,
+            "Visual Theme",
+            0,
+            new ConfigDescription(
+                "Visual theme for notifications and overlays.\n" +
+                "0=Default, 1=Neon, 2=Tactical, 3=HighContrast, 4=Minimal",
+                new AcceptableValueRange<int>(0, 4),
+                new ConfigurationManagerAttributes { Order = order-- }
+            )
+        );
+
         // ====================================================================
         // Keybind Settings
         // Single combined keybind displayed as "Ctrl + Alt + F8"
@@ -555,6 +674,17 @@ public static class Settings
             new KeyboardShortcut(KeyCode.F8, KeyCode.LeftControl, KeyCode.LeftAlt),
             new ConfigDescription(
                 "Keybind for taking manual snapshots (only used in Auto+Manual or Manual Only modes)",
+                null,
+                new ConfigurationManagerAttributes { Order = order-- }
+            )
+        );
+
+        LossPreviewKeybind = config.Bind(
+            CategoryKeybind,
+            "Loss Preview Keybind",
+            new KeyboardShortcut(KeyCode.F9, KeyCode.LeftControl, KeyCode.LeftAlt),
+            new ConfigDescription(
+                "Keybind to show what items you would lose if you died right now.",
                 null,
                 new ConfigurationManagerAttributes { Order = order-- }
             )

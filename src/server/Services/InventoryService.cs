@@ -31,6 +31,7 @@ using System.Linq;
 using System.Reflection;
 using Blackhorse311.KeepStartingGear.Configuration;
 using Blackhorse311.KeepStartingGear.Models;
+using Comfort.Common;
 using EFT;
 using EFT.InventoryLogic;
 
@@ -2243,4 +2244,248 @@ public class InventoryService
 
         return slots;
     }
+
+    // ========================================================================
+    // Current Inventory Query (for Loss Preview and Value Calculator)
+    // ========================================================================
+
+    /// <summary>
+    /// Gets a simplified list of current inventory items for loss preview and value calculation.
+    /// </summary>
+    /// <returns>List of current inventory items with basic info</returns>
+    /// <remarks>
+    /// This method intentionally returns ALL items in the player's equipment,
+    /// ignoring the slot settings (IncludeTacticalVest, IncludeBackpack, etc.).
+    /// This is because the loss preview needs to show what the player would
+    /// lose if they died, which depends on what's in the snapshot, not what
+    /// slots are enabled. The comparison with the snapshot handles the
+    /// protection logic.
+    /// </remarks>
+    public List<CurrentInventoryItem> GetCurrentInventoryItems()
+    {
+        var items = new List<CurrentInventoryItem>();
+
+        try
+        {
+            var gameWorld = Singleton<GameWorld>.Instance;
+            if (gameWorld?.MainPlayer == null)
+                return items;
+
+            var player = gameWorld.MainPlayer;
+            var equipment = player.Profile?.Inventory?.Equipment;
+            if (equipment == null)
+                return items;
+
+            // Get all items recursively from equipment
+            CollectItemsRecursively(equipment, items);
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.LogDebug($"[InventoryService] Error getting current items: {ex.Message}");
+        }
+
+        return items;
+    }
+
+    /// <summary>
+    /// Recursively collects items from a container.
+    /// </summary>
+    private void CollectItemsRecursively(Item container, List<CurrentInventoryItem> items)
+    {
+        if (container == null) return;
+
+        try
+        {
+            // Get child items via reflection (GetAllItems or similar)
+            var allItems = GetAllItemsFromContainer(container);
+            if (allItems == null) return;
+
+            foreach (var item in allItems)
+            {
+                if (item == null) continue;
+
+                // Skip the container itself
+                if (item == container) continue;
+
+                var currentItem = new CurrentInventoryItem
+                {
+                    Id = GetItemId(item),
+                    Tpl = GetItemTemplateId(item),
+                    Name = GetItemName(item),
+                    ShortName = GetItemShortName(item),
+                    StackCount = GetStackCount(item),
+                    IsFoundInRaid = GetFoundInRaid(item)
+                };
+
+                items.Add(currentItem);
+            }
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.LogDebug($"[InventoryService] Error collecting items: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Gets all items from a container using reflection.
+    /// </summary>
+    private IEnumerable<Item> GetAllItemsFromContainer(Item container)
+    {
+        try
+        {
+            // Try GetAllItems method
+            var method = container.GetType().GetMethod("GetAllItems", BindingFlags.Public | BindingFlags.Instance);
+            if (method != null)
+            {
+                return method.Invoke(container, null) as IEnumerable<Item>;
+            }
+
+            // Try ContainedItems property
+            var prop = container.GetType().GetProperty("ContainedItems", BindingFlags.Public | BindingFlags.Instance);
+            if (prop != null)
+            {
+                return prop.GetValue(container) as IEnumerable<Item>;
+            }
+        }
+        catch { }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Gets the item ID.
+    /// </summary>
+    private string GetItemId(Item item)
+    {
+        try
+        {
+            var idProp = item.GetType().GetProperty("Id", BindingFlags.Public | BindingFlags.Instance);
+            return idProp?.GetValue(item)?.ToString() ?? "";
+        }
+        catch { return ""; }
+    }
+
+    /// <summary>
+    /// Gets the item template ID.
+    /// </summary>
+    private string GetItemTemplateId(Item item)
+    {
+        try
+        {
+            var tplProp = item.GetType().GetProperty("TemplateId", BindingFlags.Public | BindingFlags.Instance);
+            return tplProp?.GetValue(item)?.ToString() ?? "";
+        }
+        catch { return ""; }
+    }
+
+    /// <summary>
+    /// Gets the item display name.
+    /// </summary>
+    private string GetItemName(Item item)
+    {
+        try
+        {
+            var nameProp = item.GetType().GetProperty("Name", BindingFlags.Public | BindingFlags.Instance);
+            if (nameProp != null)
+            {
+                var nameObj = nameProp.GetValue(item);
+                if (nameObj != null)
+                {
+                    // Try to get Localized property
+                    var localizedProp = nameObj.GetType().GetProperty("Localized");
+                    if (localizedProp != null)
+                        return localizedProp.GetValue(nameObj)?.ToString() ?? "";
+                    return nameObj.ToString();
+                }
+            }
+
+            // Fallback to ShortName
+            return GetItemShortName(item);
+        }
+        catch { return ""; }
+    }
+
+    /// <summary>
+    /// Gets the item short name.
+    /// </summary>
+    private string GetItemShortName(Item item)
+    {
+        try
+        {
+            var shortNameProp = item.GetType().GetProperty("ShortName", BindingFlags.Public | BindingFlags.Instance);
+            if (shortNameProp != null)
+            {
+                var nameObj = shortNameProp.GetValue(item);
+                if (nameObj != null)
+                {
+                    var localizedProp = nameObj.GetType().GetProperty("Localized");
+                    if (localizedProp != null)
+                        return localizedProp.GetValue(nameObj)?.ToString() ?? "";
+                    return nameObj.ToString();
+                }
+            }
+        }
+        catch { }
+        return "";
+    }
+
+    /// <summary>
+    /// Gets the stack count for an item.
+    /// </summary>
+    private int GetStackCount(Item item)
+    {
+        try
+        {
+            var stackProp = item.GetType().GetProperty("StackObjectsCount", BindingFlags.Public | BindingFlags.Instance);
+            if (stackProp != null)
+            {
+                var value = stackProp.GetValue(item);
+                if (value is int intVal) return intVal;
+            }
+        }
+        catch { }
+        return 1;
+    }
+
+    /// <summary>
+    /// Gets whether the item is found in raid.
+    /// </summary>
+    private bool GetFoundInRaid(Item item)
+    {
+        try
+        {
+            var firProp = item.GetType().GetProperty("SpawnedInSession", BindingFlags.Public | BindingFlags.Instance);
+            if (firProp != null)
+            {
+                var value = firProp.GetValue(item);
+                if (value is bool boolVal) return boolVal;
+            }
+        }
+        catch { }
+        return false;
+    }
+}
+
+/// <summary>
+/// Simplified item data for loss preview and value calculation.
+/// </summary>
+public class CurrentInventoryItem
+{
+    /// <summary>Item ID.</summary>
+    public string Id { get; set; } = "";
+
+    /// <summary>Template/TPL ID.</summary>
+    public string Tpl { get; set; } = "";
+
+    /// <summary>Item display name.</summary>
+    public string Name { get; set; } = "";
+
+    /// <summary>Item short name.</summary>
+    public string ShortName { get; set; } = "";
+
+    /// <summary>Stack count.</summary>
+    public int StackCount { get; set; } = 1;
+
+    /// <summary>Found in raid status.</summary>
+    public bool IsFoundInRaid { get; set; }
 }
