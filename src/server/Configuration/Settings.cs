@@ -128,8 +128,10 @@ public static class Settings
 
     /// <summary>
     /// Flag to prevent recursive preset application when settings change.
+    /// CON-002: Marked volatile for thread-safe visibility across potential
+    /// concurrent access from event handlers.
     /// </summary>
-    private static bool _applyingPreset;
+    private static volatile bool _applyingPreset;
 
     #endregion
 

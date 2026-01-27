@@ -59,20 +59,30 @@ public class AutoSnapshotMonitor : MonoBehaviour
     private int _autoSnapshotsThisRaid;
     private bool _isInRaid;
 
+    /// <summary>
+    /// Lock object for thread-safe singleton initialization.
+    /// NEW-006: Ensures proper singleton pattern during rapid scene reloads.
+    /// </summary>
+    private static readonly object _singletonLock = new();
+
     // ========================================================================
     // Unity Lifecycle
     // ========================================================================
 
     private void Awake()
     {
-        if (Instance != null && Instance != this)
+        // NEW-006: Thread-safe singleton pattern
+        lock (_singletonLock)
         {
-            Destroy(gameObject);
-            return;
-        }
+            if (Instance != null && Instance != this)
+            {
+                Destroy(gameObject);
+                return;
+            }
 
-        Instance = this;
-        DontDestroyOnLoad(gameObject);
+            Instance = this;
+            DontDestroyOnLoad(gameObject);
+        }
     }
 
     private void OnDestroy()

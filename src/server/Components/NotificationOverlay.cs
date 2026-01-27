@@ -110,7 +110,16 @@ public class NotificationOverlay : MonoBehaviour
     /// Queue of pending notifications waiting to be displayed.
     /// Notifications are shown one at a time in FIFO order.
     /// </summary>
+    /// <remarks>
+    /// REL-003: Access to this queue is synchronized via _queueLock to prevent
+    /// race conditions when notifications are added from different code paths.
+    /// </remarks>
     private readonly Queue<Notification> _notificationQueue = new();
+
+    /// <summary>
+    /// Lock object for thread-safe access to the notification queue.
+    /// </summary>
+    private readonly object _queueLock = new();
 
     /// <summary>
     /// The notification currently being displayed, or null if none.
@@ -247,11 +256,15 @@ public class NotificationOverlay : MonoBehaviour
         // If no notification is displaying, check the queue
         if (_currentNotification == null)
         {
-            if (_notificationQueue.Count > 0)
+            // REL-003: Thread-safe queue access
+            lock (_queueLock)
             {
-                // Dequeue next notification and set its start time
-                _currentNotification = _notificationQueue.Dequeue();
-                _currentNotification.StartTime = Time.time;
+                if (_notificationQueue.Count > 0)
+                {
+                    // Dequeue next notification and set its start time
+                    _currentNotification = _notificationQueue.Dequeue();
+                    _currentNotification.StartTime = Time.time;
+                }
             }
             return;
         }
@@ -368,15 +381,19 @@ public class NotificationOverlay : MonoBehaviour
             FadeOutDuration = DefaultFadeOutDuration
         };
 
-        // If nothing is currently displaying, show immediately
-        if (_currentNotification == null)
+        // REL-003: Thread-safe queue access
+        lock (_queueLock)
         {
-            _currentNotification = notification;
-        }
-        else
-        {
-            // Otherwise queue for later display
-            _notificationQueue.Enqueue(notification);
+            // If nothing is currently displaying, show immediately
+            if (_currentNotification == null)
+            {
+                _currentNotification = notification;
+            }
+            else
+            {
+                // Otherwise queue for later display
+                _notificationQueue.Enqueue(notification);
+            }
         }
     }
 

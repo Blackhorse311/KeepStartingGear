@@ -87,6 +87,8 @@ public class KeybindMonitor : MonoBehaviour
     // ========================================================================
     // Static Fields (Shared Across All Instances)
     // These track raid-wide state for the snapshot system
+    // CON-001: These fields use volatile for visibility guarantees across
+    // potential thread boundaries (Unity main thread + callbacks)
     // ========================================================================
 
     /// <summary>
@@ -94,42 +96,42 @@ public class KeybindMonitor : MonoBehaviour
     /// When a snapshot is taken on a map, this is set to that map's name.
     /// Null means no snapshot has been taken yet this raid.
     /// </summary>
-    private static string _currentRaidSnapshotMap = null;
+    private static volatile string _currentRaidSnapshotMap = null;
 
     /// <summary>
     /// Tracks whether the player is currently in a raid.
     /// </summary>
-    private static bool _inRaid = false;
+    private static volatile bool _inRaid = false;
 
     /// <summary>
     /// Tracks whether an auto-snapshot was taken at raid start.
     /// Used for warning when manual snapshot would overwrite auto-snapshot.
     /// </summary>
-    private static bool _autoSnapshotTaken = false;
+    private static volatile bool _autoSnapshotTaken = false;
 
     /// <summary>
     /// Tracks how many manual snapshots have been taken this raid.
     /// In AutoPlusManual mode, limited by MaxManualSnapshots setting.
     /// </summary>
-    private static int _manualSnapshotCount = 0;
+    private static volatile int _manualSnapshotCount = 0;
 
     /// <summary>
     /// Timestamp when the last manual snapshot was taken.
     /// Used for enforcing configurable cooldown between manual snapshots.
     /// </summary>
-    private static float _lastManualSnapshotTime = 0f;
+    private static volatile float _lastManualSnapshotTime = 0f;
 
     /// <summary>
     /// Number of items in the current snapshot.
     /// Used for showing difference when overwriting auto-snapshot.
     /// </summary>
-    private static int _currentSnapshotItemCount = 0;
+    private static volatile int _currentSnapshotItemCount = 0;
 
     /// <summary>
     /// The snapshot mode that was active when the raid started.
     /// This prevents exploits where players change settings mid-raid.
     /// </summary>
-    private static SnapshotMode _raidStartMode = SnapshotMode.AutoOnly;
+    private static volatile SnapshotMode _raidStartMode = SnapshotMode.AutoOnly;
 
     // ========================================================================
     // Initialization

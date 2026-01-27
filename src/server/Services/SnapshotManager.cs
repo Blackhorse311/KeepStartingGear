@@ -343,6 +343,13 @@ public class SnapshotManager
             string jsonContent = File.ReadAllText(mostRecentFile);
             var snapshot = JsonConvert.DeserializeObject<InventorySnapshot>(jsonContent);
 
+            // REL-001: Validate deserialized snapshot is not null
+            if (snapshot == null)
+            {
+                Plugin.Log.LogWarning($"Failed to deserialize snapshot from file: {mostRecentFile}");
+                return null;
+            }
+
             return snapshot;
         }
         catch (Exception ex)

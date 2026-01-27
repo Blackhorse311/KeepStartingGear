@@ -223,12 +223,20 @@ public class LossPreviewOverlay : MonoBehaviour
                     if (item.Tpl == "55d7217a4bdc2d86028b456d")
                         continue;
 
+                    // NEW-001: Null-safe access to item.Tpl for ShortName
+                    string shortName = item.ShortName;
+                    if (string.IsNullOrEmpty(shortName) && !string.IsNullOrEmpty(item.Tpl))
+                    {
+                        shortName = item.Tpl.Length > 12 ? item.Tpl.Substring(0, 12) : item.Tpl;
+                    }
+                    shortName ??= "???";
+
                     // This item would be lost
                     _lostItems.Add(new LossPreviewItem
                     {
-                        TemplateId = item.Tpl,
-                        Name = item.Name ?? item.Tpl,
-                        ShortName = item.ShortName ?? (item.Tpl.Length > 12 ? item.Tpl.Substring(0, 12) : item.Tpl),
+                        TemplateId = item.Tpl ?? "",
+                        Name = item.Name ?? item.Tpl ?? "Unknown",
+                        ShortName = shortName,
                         Count = item.StackCount,
                         WasFoundInRaid = item.IsFoundInRaid
                     });
@@ -347,7 +355,8 @@ public class LossPreviewOverlay : MonoBehaviour
 
     private void OnGUI()
     {
-        if (!_isDisplaying)
+        // NEW-009: Add null check for _lostItems
+        if (!_isDisplaying || _lostItems == null)
             return;
 
         InitializeStyles();

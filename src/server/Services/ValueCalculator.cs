@@ -19,6 +19,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using Comfort.Common;
 using EFT;
 using EFT.InventoryLogic;
@@ -240,11 +241,20 @@ public class ValueCalculator
                     var tryGetMethod = templates.GetType().GetMethod("TryGetValue");
                     if (tryGetMethod != null)
                     {
-                        var parameters = new object[] { templateId, null };
-                        var found = (bool)tryGetMethod.Invoke(templates, parameters);
-                        if (found && parameters[1] is ItemTemplate template)
+                        // NEW-003: Wrap reflection invoke in try-catch and validate result
+                        try
                         {
-                            return GetTemplateCreditPrice(template);
+                            var parameters = new object[] { templateId, null };
+                            var result = tryGetMethod.Invoke(templates, parameters);
+                            var found = result is bool b && b;
+                            if (found && parameters[1] is ItemTemplate template)
+                            {
+                                return GetTemplateCreditPrice(template);
+                            }
+                        }
+                        catch (TargetInvocationException)
+                        {
+                            // Reflection target threw - ignore and return default
                         }
                     }
                 }
@@ -252,10 +262,11 @@ public class ValueCalculator
         }
         catch (Exception ex)
         {
-            Plugin.Log.LogDebug($"[ValueCalculator] Could not lookup value for {templateId}: {ex.Message}");
+            // NEW-008: Log at warning level for reflection failures
+            Plugin.Log.LogWarning($"[ValueCalculator] Failed to lookup template {templateId}: {ex.Message}");
         }
 
-        // Return 0 if we can't determine value
+        // Return 0 if we can't determine value (intentional default for unknown items)
         return 0;
     }
 

@@ -296,15 +296,16 @@ public class LoadoutProfiles
     /// <summary>
     /// Sanitizes a profile name to be filesystem-safe.
     /// Returns null if the name is invalid or empty after sanitization.
+    /// NEW-004: Uses whitelist approach for security.
     /// </summary>
     private string SanitizeProfileName(string name)
     {
         if (string.IsNullOrWhiteSpace(name))
             return null;
 
-        // Remove invalid characters
-        var invalidChars = Path.GetInvalidFileNameChars();
-        name = new string(name.Where(c => !invalidChars.Contains(c) && c != '_').ToArray());
+        // NEW-004: Use whitelist instead of blacklist - only allow safe characters
+        // Allow alphanumeric, spaces, and hyphens
+        name = System.Text.RegularExpressions.Regex.Replace(name, @"[^a-zA-Z0-9\s\-]", "");
 
         // Trim and limit length
         name = name.Trim();

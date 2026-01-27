@@ -137,8 +137,14 @@ public class ProtectionIndicator : MonoBehaviour
             _isInRaid = false;
         }
 
+        // NEW-007: Explicit null check for Settings initialization
         // Only show indicator if setting is enabled and we're in raid
-        _showIndicator = _isInRaid && Settings.ShowProtectionIndicator?.Value == true;
+        if (Settings.ShowProtectionIndicator == null)
+        {
+            _showIndicator = false;
+            return;
+        }
+        _showIndicator = _isInRaid && Settings.ShowProtectionIndicator.Value;
     }
 
     private void RefreshSnapshotData()

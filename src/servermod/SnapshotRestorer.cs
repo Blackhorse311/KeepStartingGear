@@ -110,6 +110,22 @@ public class SnapshotRestorer<TLogger>
     }
 
     /// <summary>
+    /// Validates that a session ID contains only safe characters.
+    /// Prevents path traversal attacks via malicious session IDs.
+    /// </summary>
+    private static bool IsValidSessionId(string sessionId)
+    {
+        // Only allow alphanumeric characters, hyphens, and underscores
+        return System.Text.RegularExpressions.Regex.IsMatch(sessionId, @"^[a-zA-Z0-9\-_]+$");
+    }
+
+    /// <summary>
+    /// Maximum allowed snapshot file size in bytes (10 MB).
+    /// Prevents denial-of-service via extremely large snapshot files.
+    /// </summary>
+    private const long MaxSnapshotFileSize = 10 * 1024 * 1024;
+
+    /// <summary>
     /// Attempts to restore inventory from a snapshot file.
     /// </summary>
     /// <param name="sessionId">Player's session/profile ID.</param>
@@ -119,6 +135,13 @@ public class SnapshotRestorer<TLogger>
     {
         if (string.IsNullOrEmpty(sessionId))
             return RestoreResult.Failed("Session ID is null or empty");
+
+        // SEC-001: Validate session ID to prevent path traversal
+        if (!IsValidSessionId(sessionId))
+        {
+            _logger.Warning($"{Constants.LogPrefix} Invalid session ID format rejected: contains illegal characters");
+            return RestoreResult.Failed("Invalid session ID format");
+        }
 
         if (inventoryItems == null)
             return RestoreResult.Failed("Inventory items list is null");
@@ -159,6 +182,14 @@ public class SnapshotRestorer<TLogger>
     private RestoreResult RestoreFromFile(string snapshotPath, List<Item> inventoryItems)
     {
         _logger.Debug($"{Constants.LogPrefix} Found snapshot file: {snapshotPath}");
+
+        // SEC-002: Check file size before reading to prevent DoS via large files
+        var fileInfo = new FileInfo(snapshotPath);
+        if (fileInfo.Length > MaxSnapshotFileSize)
+        {
+            _logger.Warning($"{Constants.LogPrefix} Snapshot file too large ({fileInfo.Length} bytes), max allowed is {MaxSnapshotFileSize} bytes");
+            return RestoreResult.Failed($"Snapshot file too large: {fileInfo.Length} bytes");
+        }
 
         // Read snapshot with retry for file locking issues
         string snapshotJson = ReadSnapshotWithRetry(snapshotPath);
@@ -476,6 +507,9 @@ public class SnapshotRestorer<TLogger>
         {
             if (item.ParentId != profileEquipmentId) continue;
 
+            // LOG-001: Validate item.Id before use
+            if (string.IsNullOrEmpty(item.Id)) continue;
+
             var slotId = item.SlotId ?? "";
             bool slotIsManaged = IsSlotManaged(slotId, includedSlotIds, snapshotSlotIds, emptySlotIds);
 
@@ -485,7 +519,7 @@ public class SnapshotRestorer<TLogger>
                 continue;
             }
 
-            equipmentItemIds.Add(item.Id!);
+            equipmentItemIds.Add(item.Id);
             LogRemovalReason(slotId, item.Template, snapshotSlotIds, emptySlotIds);
         }
 
@@ -497,11 +531,14 @@ public class SnapshotRestorer<TLogger>
             foundMore = false;
             foreach (var item in items)
             {
+                // LOG-002: Validate item.Id before use in nested loop
+                if (string.IsNullOrEmpty(item.Id)) continue;
+
                 if (item.ParentId != null &&
                     equipmentItemIds.Contains(item.ParentId) &&
-                    !equipmentItemIds.Contains(item.Id!))
+                    !equipmentItemIds.Contains(item.Id))
                 {
-                    equipmentItemIds.Add(item.Id!);
+                    equipmentItemIds.Add(item.Id);
                     foundMore = true;
                 }
             }
@@ -513,7 +550,8 @@ public class SnapshotRestorer<TLogger>
             _logger.Warning($"{Constants.LogPrefix} Max iterations reached while finding nested items. Possible corrupt item hierarchy.");
         }
 
-        int removedCount = items.RemoveAll(item => equipmentItemIds.Contains(item.Id!));
+        // LOG-003: Validate item.Id in RemoveAll predicate
+        int removedCount = items.RemoveAll(item => !string.IsNullOrEmpty(item.Id) && equipmentItemIds.Contains(item.Id));
         return removedCount;
     }
 
@@ -609,7 +647,11 @@ public class SnapshotRestorer<TLogger>
             var newItem = CreateItemFromSnapshot(snapshotItem, profileEquipmentId, snapshotEquipmentId);
 
             inventoryItems.Add(newItem);
-            existingItemIds.Add(newItem.Id!);
+            // LOG-004: Validate newItem.Id before adding to HashSet
+            if (!string.IsNullOrEmpty(newItem.Id))
+            {
+                existingItemIds.Add(newItem.Id);
+            }
             addedCount++;
         }
 

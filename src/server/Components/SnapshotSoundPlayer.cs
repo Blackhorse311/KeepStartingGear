@@ -19,7 +19,9 @@ namespace Blackhorse311.KeepStartingGear.Components;
 /// </summary>
 public static class SnapshotSoundPlayer
 {
-    private static bool _initialized;
+    // CON-003: Use volatile for thread-safe initialization flag
+    private static volatile bool _initialized;
+    private static readonly object _initLock = new();
     private static object _guiSoundsInstance;
     private static MethodInfo _playMethod;
     private static Type _soundEnumType;
@@ -37,10 +39,16 @@ public static class SnapshotSoundPlayer
             if (!Configuration.Settings.PlaySnapshotSound.Value)
                 return;
 
-            // Try to use EFT's GUISounds system
+            // CON-003: Thread-safe double-check locking for initialization
             if (!_initialized)
             {
-                Initialize();
+                lock (_initLock)
+                {
+                    if (!_initialized)
+                    {
+                        Initialize();
+                    }
+                }
             }
 
             if (_guiSoundsInstance != null && _playMethod != null && _skillSoundValue != null)

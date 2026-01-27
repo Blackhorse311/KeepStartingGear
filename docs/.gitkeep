@@ -1,0 +1,7 @@
+# This directory contains code review reports and fix tracking documents
+#
+# Files created here:
+# - REVIEW_REPORT_YYYY-MM-DD.md - Code review reports from /full-review
+# - REVIEW_FIXES_PASS1.md, PASS2.md, etc. - Fix tracking from /fix-issues
+#
+# These files help prevent circular work by tracking what has been reviewed and fixed.

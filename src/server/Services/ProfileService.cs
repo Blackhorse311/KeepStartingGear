@@ -120,21 +120,28 @@ public class ProfileService
             string gameDirectory = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\', '/');
             Plugin.Log.LogDebug($"Game directory (BaseDirectory): {gameDirectory}");
 
+            // REL-002: Safely get parent directory (can be null for root paths)
+            string parentDirectory = Path.GetDirectoryName(gameDirectory);
+
             // Define possible profile directory locations
-            string[] possiblePaths = new[]
+            var possiblePaths = new List<string>
             {
                 // Standard SPT structure: {SPT_ROOT}/SPT/user/profiles
                 Path.Combine(gameDirectory, "SPT", "user", "profiles"),
 
                 // Alternative: {SPT_ROOT}/user/profiles (if SPT folder structure is flat)
-                Path.Combine(gameDirectory, "user", "profiles"),
+                Path.Combine(gameDirectory, "user", "profiles")
+            };
 
+            // Only add parent-based paths if parent directory exists
+            if (!string.IsNullOrEmpty(parentDirectory))
+            {
                 // Go up one level and back down: parent\SPT\user\profiles
-                Path.Combine(Path.GetDirectoryName(gameDirectory), "SPT", "user", "profiles"),
+                possiblePaths.Add(Path.Combine(parentDirectory, "SPT", "user", "profiles"));
 
                 // Go up one level: parent\user\profiles
-                Path.Combine(Path.GetDirectoryName(gameDirectory), "user", "profiles")
-            };
+                possiblePaths.Add(Path.Combine(parentDirectory, "user", "profiles"));
+            }
 
             // Try each path until we find one that exists
             foreach (var path in possiblePaths)

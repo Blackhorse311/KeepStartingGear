@@ -119,8 +119,15 @@ public class SummaryFileWatcher : MonoBehaviour
         {
             Plugin.Log.LogWarning($"[SummaryWatcher] Failed to process summary file: {ex.Message}");
 
-            // Try to delete the file even if parsing failed
-            try { File.Delete(_summaryFilePath); } catch { }
+            // NEW-005: Try to delete the file even if parsing failed, with logging
+            try
+            {
+                File.Delete(_summaryFilePath);
+            }
+            catch (Exception deleteEx)
+            {
+                Plugin.Log.LogDebug($"[SummaryWatcher] Could not delete summary file: {deleteEx.Message}");
+            }
         }
     }
 
