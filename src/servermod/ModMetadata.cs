@@ -77,7 +77,7 @@ public record ModMetadata : AbstractModMetadata
     /// Current version of the mod using Semantic Versioning.
     /// Format: MAJOR.MINOR.PATCH
     /// </summary>
-    public override SemanticVersioning.Version Version { get; init; } = new("1.4.10");
+    public override SemanticVersioning.Version Version { get; init; } = new("2.0.0");
 
     /// <summary>
     /// Range of compatible SPT server versions.

@@ -84,7 +84,7 @@ public class Plugin : BaseUnityPlugin
     /// <summary>
     /// Semantic version (MAJOR.MINOR.PATCH) - must match server mod version
     /// </summary>
-    public const string PluginVersion = "1.4.10";
+    public const string PluginVersion = "2.0.0";
 
     /// <summary>
     /// SPT/EFT build version this mod was tested against

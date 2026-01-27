@@ -5,6 +5,70 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-01-27
+
+### Added - New UI Features
+
+- **Post-Death Summary Screen**: After dying, a detailed overlay now shows exactly what was restored vs. lost. Items are color-coded (green = restored, red = lost, gold = FiR) with values and counts displayed. Auto-dismisses after 12 seconds.
+
+- **Loss Preview Overlay**: Press **Ctrl+Alt+F9** during a raid to see a real-time preview of what you would lose if you died right now. Shows items not in your snapshot with estimated values.
+
+- **Protection Indicator**: Visual indicator showing which items are currently protected by an active snapshot. Toggleable via settings.
+
+- **Loadout Profiles**: Save and load multiple gear configurations as named profiles. Quick-switch between saved loadouts.
+
+- **Auto-Snapshot by Value Threshold**: Configure automatic snapshots when your current loot exceeds a specified ruble value. Great for protecting valuable finds without manual intervention.
+
+- **Snapshot History & Statistics**: Track your restoration history across raids. See statistics on items saved, deaths, extractions.
+
+- **Theme System**: Choose from 5 visual themes for overlays: Default, Neon, Tactical, HighContrast, Minimal.
+
+### Added - New Services
+
+- **ValueCalculator**: Estimates item values using game data for loss preview and auto-snapshot features.
+- **SnapshotHistory**: Tracks raid-by-raid snapshot history for statistics.
+- **RestorationSummary**: Generates detailed restoration vs. loss data for the summary overlay.
+- **SummaryFileWatcher**: Monitors for summary data files to trigger UI updates.
+- **ThemeService**: Manages UI theme colors and styling.
+
+### Added - Compatibility System
+
+- **ModDetector**: Improved detection of SVM and other potentially conflicting mods.
+- **CompatibilityManager**: Manages compatibility workarounds automatically.
+- **ConflictReport**: Reports detected mod conflicts with actionable information.
+
+### Added - New Configuration Options
+
+- Auto-snapshot value threshold (ruble amount)
+- Max auto-snapshots per raid
+- Snapshot history size
+- Show protection indicator toggle
+- Show death summary toggle
+- Visual theme selection
+- Loss preview keybind (Ctrl+Alt+F9)
+
+### Fixed - Security & Reliability (26 Issues)
+
+- **SEC-001**: Added session ID validation to prevent path traversal attacks
+- **SEC-002**: Added 10MB file size limit before JSON deserialization (DoS prevention)
+- **REL-001**: Fixed potential null reference after JSON deserialization in SnapshotManager
+- **REL-002**: Fixed Path.GetDirectoryName null handling in ProfileService
+- **REL-003**: Added thread-safe queue access in NotificationOverlay
+- **LOG-001/002/003**: Fixed null-forgiving operators without null checks in SnapshotRestorer
+- **CON-001**: Added volatile to static fields in KeybindMonitor for thread safety
+- **CON-002**: Added volatile to preset application flag in Settings
+- **CON-003**: Added proper double-check locking in SnapshotSoundPlayer
+
+### Changed
+
+- **Major Version Bump**: Version 2.0.0 signifies the significant feature expansion with 7+ new user-facing features and ~5,500 lines of new code.
+
+### Compatibility
+
+- SPT 4.0.x (tested on 4.0.11)
+
+---
+
 ## [1.4.10] - 2026-01-11
 
 ### Fixed
