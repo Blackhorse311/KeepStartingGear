@@ -259,9 +259,20 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **Author:** Blackhorse311
 
+### Version 2.0.0 - Human + AI Collaboration
+
+Version 2.0.0 was developed through a collaboration between Blackhorse311 and [Claude](https://claude.ai), an AI assistant created by Anthropic. This partnership brought together human creativity and testing expertise with AI-assisted code implementation, architecture design, and quality assurance.
+
+Together, we delivered:
+- 7 new major features (UI overlays, themes, loadout profiles, statistics)
+- 26 bug fixes from comprehensive code review
+- Security hardening and thread safety improvements
+- Complete documentation overhaul
+
 **Thanks to:**
 - SPT Team - For the amazing SPT project
 - BepInEx Team - For the modding framework
+- Anthropic - For creating Claude
 
 ### Community Contributors
 

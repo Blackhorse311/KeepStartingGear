@@ -1,0 +1,505 @@
+================================================================================
+                     KEEP STARTING GEAR v2.0.0
+                      THE COMPLETE USER GUIDE
+================================================================================
+
+  "The cure for gear fear."
+
+  Created by Blackhorse311
+  Version 2.0.0 developed in collaboration with Claude (Anthropic)
+
+================================================================================
+                        TABLE OF CONTENTS
+================================================================================
+
+  1. WHAT THIS MOD DOES (AND DOESN'T DO)
+  2. INSTALLATION - READ THIS FIRST
+  3. YOUR FIRST RAID WITH THIS MOD
+  4. SETTINGS YOU CAN CHANGE
+  5. COMMON QUESTIONS
+  6. WHEN THINGS GO WRONG
+  7. CREDITS
+
+================================================================================
+                 SECTION 1: WHAT THIS MOD DOES (AND DOESN'T DO)
+================================================================================
+
+  WHAT IT DOES:
+  -------------
+
+  * Saves your gear when you START a raid
+  * Restores that saved gear if you DIE
+  * Lets you keep loot if you successfully EXTRACT
+
+  That's it. That's the whole mod.
+
+
+  WHAT IT DOES NOT DO:
+  --------------------
+
+  * It does NOT duplicate items
+  * It does NOT give you infinite gear
+  * It does NOT protect items you pick up during the raid
+  * It does NOT work in multiplayer/Fika
+  * It does NOT prevent the death from happening - you still die
+
+
+  THE SIMPLE VERSION:
+  -------------------
+
+  Think of it like this:
+
+     1. You enter a raid with a rifle, armor, and backpack
+     2. The mod takes a "photo" of your gear (called a snapshot)
+     3. You find some cool loot and put it in your backpack
+     4. You get killed by a scav
+     5. The mod "restores" your gear to what it was in the photo
+     6. Your rifle, armor, and backpack come back
+     7. The loot you found? GONE. It wasn't in the original photo.
+
+  If you EXTRACT instead of dying:
+
+     1. Your snapshot is deleted
+     2. You keep everything - your starting gear AND your loot
+     3. The mod does nothing else
+
+
+  THE KEY THING TO UNDERSTAND:
+  ----------------------------
+
+  This mod protects what you BRING INTO the raid.
+  It does NOT protect what you FIND IN the raid.
+
+  If you die, you get back what you started with.
+  If you extract, you keep everything.
+
+================================================================================
+                   SECTION 2: INSTALLATION - READ THIS FIRST
+================================================================================
+
+  REQUIREMENTS:
+  -------------
+
+  * SPT 4.0.x (tested on 4.0.11)
+  * That's it. No other mods required.
+
+
+  INSTALLATION STEPS:
+  -------------------
+
+  Step 1: CLOSE EVERYTHING
+          - Close SPT Server (the command prompt window)
+          - Close the game if it's running
+          - Seriously, close them both
+
+  Step 2: FIND YOUR SPT FOLDER
+          - This is the folder where "SPT.Server.exe" lives
+          - Usually something like C:\SPT or D:\Games\SPT
+          - If you don't know where this is, you need to find it first
+
+  Step 3: EXTRACT THE ZIP FILE
+          - Right-click the downloaded zip file
+          - Choose "Extract All" or use 7-Zip/WinRAR
+          - Extract it DIRECTLY into your SPT folder
+          - When asked about merging folders, say YES
+
+  Step 4: VERIFY INSTALLATION
+          - You should now have these files:
+
+          [Your SPT Folder]/
+          |
+          +-- BepInEx/
+          |   +-- plugins/
+          |       +-- Blackhorse311-KeepStartingGear/
+          |           +-- Blackhorse311.KeepStartingGear.dll  <-- CLIENT MOD
+          |
+          +-- SPT/
+          |   +-- user/
+          |       +-- mods/
+          |           +-- Blackhorse311-KeepStartingGear/
+          |               +-- Blackhorse311.KeepStartingGear.Server.dll  <-- SERVER MOD
+          |
+          +-- SPT.Server.exe
+
+  Step 5: START THE GAME
+          - Start SPT.Server.exe first
+          - Wait for the server console to say it's ready
+          - Then start the game launcher
+          - Play!
+
+
+  COMMON INSTALLATION MISTAKES:
+  -----------------------------
+
+  WRONG: Extracting into a subfolder
+         Example: C:\SPT\KeepStartingGear\BepInEx\...
+
+         You should NOT have a "KeepStartingGear" folder in your SPT root.
+         The BepInEx and SPT folders should merge with the existing ones.
+
+  WRONG: Only installing one part
+         This mod has TWO parts - client AND server.
+         If you only have ONE of the DLL files, it won't work.
+
+  WRONG: Installing while the game is running
+         Always close the server and game first.
+
+================================================================================
+                    SECTION 3: YOUR FIRST RAID WITH THIS MOD
+================================================================================
+
+  DEFAULT BEHAVIOR (NO SETUP NEEDED):
+  -----------------------------------
+
+  The mod works immediately after installation with these defaults:
+
+  1. ENTER A RAID
+     - You'll see a green notification: "Auto-Snapshot Saved"
+     - This means your gear has been saved
+
+  2. PLAY THE RAID
+     - Loot stuff, fight scavs, do whatever
+     - The mod is just watching
+
+  3. IF YOU DIE
+     - Your gear is automatically restored
+     - You get back exactly what you started with
+     - No "Run-Through" penalty, no exploits
+
+  4. IF YOU EXTRACT
+     - Your snapshot is cleared
+     - You keep everything you have
+     - The mod does nothing
+
+
+  WHAT THE NOTIFICATIONS MEAN:
+  ----------------------------
+
+  "Auto-Snapshot Saved"
+     = Your gear was successfully saved. Good to go.
+
+  "Gear Restored"
+     = You died and your starting gear was put back in your inventory.
+
+  "Snapshot Cleared"
+     = You extracted successfully. The snapshot was deleted.
+
+
+  IF YOU DON'T SEE NOTIFICATIONS:
+  -------------------------------
+
+  That's okay! The mod still works. Some people prefer no notifications.
+  You can turn them on in the settings (see Section 4).
+
+================================================================================
+                    SECTION 4: SETTINGS YOU CAN CHANGE
+================================================================================
+
+  HOW TO ACCESS SETTINGS:
+  -----------------------
+
+  1. In-game, press F12
+  2. A menu will appear
+  3. Find "Keep Starting Gear" in the list
+  4. Click it to expand the settings
+
+
+  SNAPSHOT MODES:
+  ---------------
+
+  "Auto Only" (DEFAULT)
+     - Automatically saves your gear when you enter a raid
+     - You don't need to do anything
+     - Recommended for most players
+
+  "Auto + Manual"
+     - Automatic save at raid start, PLUS
+     - You can press a key (Ctrl+Alt+F8) to save again mid-raid
+     - Useful if you want to "update" your snapshot
+
+  "Manual Only"
+     - No automatic save
+     - YOU must press the key to save your gear
+     - For advanced players who want full control
+
+
+  PLAYSTYLE PRESETS:
+  ------------------
+
+  If you want to quickly change settings, use the preset buttons:
+
+  "Casual" (DEFAULT)
+     - Maximum protection
+     - All gear slots protected
+     - Automatic snapshots
+     - Shows notifications
+
+  "Hardcore"
+     - Manual snapshots only
+     - Found-in-Raid items NOT protected
+     - Insured items NOT protected
+     - For players who want more risk
+
+
+  SLOT PROTECTION:
+  ----------------
+
+  You can choose which slots to protect. All are ON by default:
+
+  [ ] First Primary Weapon    - Your main gun
+  [ ] Second Primary Weapon   - Your backup gun
+  [ ] Holster                  - Your pistol
+  [ ] Scabbard                 - Your melee weapon
+  [ ] Headwear                 - Helmets, hats
+  [ ] Earpiece                 - Headsets
+  [ ] Face Cover               - Masks
+  [ ] Eyewear                  - Glasses, goggles
+  [ ] Arm Band                 - ID bands
+  [ ] Tactical Vest            - Chest rigs
+  [ ] Armor Vest               - Body armor
+  [ ] Pockets                  - Pocket contents
+  [ ] Backpack                 - Your backpack
+  [ ] Secured Container        - Your gamma/epsilon
+  [ ] Compass                  - Your compass
+  [ ] Special Slots            - Injector slots
+
+
+  PROTECTION OPTIONS:
+  -------------------
+
+  "Protect FIR Items" (OFF by default)
+     - When OFF: Items marked "Found in Raid" are NOT saved in snapshots
+     - When ON: All items are saved regardless of FIR status
+     - Why it matters: Prevents accidentally duplicating valuable items
+
+  "Exclude Insured Items" (OFF by default)
+     - When OFF: Insured items ARE saved in snapshots
+     - When ON: Insured items are NOT saved (insurance handles them)
+     - Why it matters: Lets you use insurance for some items
+
+  "Re-Snapshot on Map Transfer" (OFF by default)
+     - When OFF: If you transfer between maps, keeps original snapshot
+     - When ON: Takes a new snapshot with current gear at transfer
+     - Why it matters: Some players want protection to update when changing maps
+
+
+  OTHER SETTINGS:
+  ---------------
+
+  "Play Snapshot Sound" (ON by default)
+     - Makes a sound when a snapshot is taken
+     - Turn off if you find it annoying
+
+  "Show Notifications" (ON by default)
+     - Shows on-screen messages
+     - Turn off if you don't want them
+
+  "Manual Snapshot Keybind" (Ctrl+Alt+F8 by default)
+     - The key combo for manual snapshots
+     - Only works in "Auto + Manual" or "Manual Only" modes
+
+================================================================================
+                      SECTION 5: COMMON QUESTIONS
+================================================================================
+
+  Q: Do I need to do anything for this mod to work?
+  A: No. Just install it and play. It works automatically.
+
+  Q: Will I get banned for using this?
+  A: No. SPT is single-player offline. There's no one to ban you.
+
+  Q: Does this work with other mods?
+  A: Yes, mostly. See the exceptions below.
+
+  Q: Does this work with SVM (Server Value Modifier)?
+  A: Yes, BUT you must disable these SVM settings:
+     - Safe Exit = OFF
+     - Softcore Mode = OFF
+     If you don't, you'll have problems.
+
+  Q: Does this work with Fika (multiplayer)?
+  A: No. This is a single-player only mod.
+
+  Q: Does this duplicate items?
+  A: No. When you die, you get BACK what you started with.
+     Items you found during the raid are lost.
+
+  Q: What about the items in my secure container?
+  A: They're protected too, by default. You can turn this off in settings.
+
+  Q: What if I pick up better gear during a raid and die?
+  A: You get your ORIGINAL gear back, not the better gear you picked up.
+     The snapshot is from raid START, not raid END.
+
+  Q: Can I update my snapshot mid-raid?
+  A: Yes, if you use "Auto + Manual" or "Manual Only" mode.
+     Press Ctrl+Alt+F8 to save your current gear.
+
+  Q: Does the mod affect my stash?
+  A: No. It only deals with gear you take INTO raids.
+
+  Q: What about durability, ammo, medical items?
+  A: Everything is restored exactly as it was:
+     - Gun durability
+     - Ammo counts in magazines
+     - Medical item charges
+     - Armor plate durability
+
+  Q: I died but my gear wasn't restored. What happened?
+  A: Check:
+     - Both mods installed? (client AND server)
+     - Using SVM? (disable Safe Exit and Softcore Mode)
+     - Server console for errors
+
+  Q: Can I use this to farm items?
+  A: No. You only get back what you started with. Nothing new.
+
+================================================================================
+                    SECTION 6: WHEN THINGS GO WRONG
+================================================================================
+
+  PROBLEM: Mod doesn't seem to do anything
+  -----------------------------------------
+  SOLUTION:
+  1. Check both files are installed:
+     - BepInEx/plugins/Blackhorse311-KeepStartingGear/Blackhorse311.KeepStartingGear.dll
+     - SPT/user/mods/Blackhorse311-KeepStartingGear/Blackhorse311.KeepStartingGear.Server.dll
+  2. Check the server console for errors when starting
+  3. Check BepInEx/LogOutput.log for errors
+
+
+  PROBLEM: "Auto-Snapshot Saved" notification doesn't appear
+  ----------------------------------------------------------
+  SOLUTION:
+  1. Notifications might be turned off - check F12 settings
+  2. The mod might still be working - try dying to see if gear restores
+
+
+  PROBLEM: Gear not restoring after death
+  ---------------------------------------
+  SOLUTION:
+  1. Make sure you're dying, not disconnecting
+  2. Check if you're using SVM - disable Safe Exit and Softcore Mode
+  3. Check server console for error messages
+  4. Try a fresh raid
+
+
+  PROBLEM: Items are disappearing
+  -------------------------------
+  SOLUTION:
+  1. This shouldn't happen with this mod
+  2. If it does, another mod might be conflicting
+  3. Report the issue with your log files
+
+
+  PROBLEM: Duplicate items appearing
+  ----------------------------------
+  SOLUTION:
+  1. This can happen if SVM's "Save Gear After Death" is enabled
+  2. Disable that SVM setting
+  3. If you're not using SVM, report the issue
+
+
+  PROBLEM: Game crashes
+  ---------------------
+  SOLUTION:
+  1. Check BepInEx/LogOutput.log for error messages
+  2. Try disabling other mods to find conflicts
+  3. Report the issue with your log file
+
+
+  HOW TO REPORT A BUG:
+  --------------------
+
+  Go to: https://github.com/Blackhorse311/KeepStartingGear/issues
+
+  Include:
+  1. What you expected to happen
+  2. What actually happened
+  3. Your SPT version
+  4. Your BepInEx/LogOutput.log file
+  5. Any other mods you're using
+
+================================================================================
+                        SECTION 7: CREDITS
+================================================================================
+
+  CREATED BY:
+  -----------
+  Blackhorse311
+  https://github.com/Blackhorse311/KeepStartingGear
+
+
+  VERSION 2.0.0 - HUMAN + AI COLLABORATION:
+  -----------------------------------------
+  Version 2.0.0 was developed through a collaboration between Blackhorse311
+  and Claude, an AI assistant created by Anthropic. This collaboration
+  represents a new approach to mod development:
+
+  - Blackhorse311 provided the creative vision, feature requirements, and
+    testing expertise that comes from being an active SPT player
+
+  - Claude assisted with code implementation, architecture design, code
+    review, documentation, and quality assurance
+
+  Together, we implemented:
+  - 7 new major features (UI overlays, themes, profiles, statistics)
+  - 26 bug fixes identified through comprehensive code review
+  - Improved thread safety and security hardening
+  - Complete documentation overhaul
+
+  This version demonstrates that human creativity combined with AI
+  capabilities can produce something greater than either could alone.
+
+
+  COMMUNITY CONTRIBUTORS:
+  -----------------------
+  Bug hunters, testers, and feedback providers who made this mod better:
+
+  @Troyoza, @Wolthon, @rSlade, @20fpsguy, @Recker, @VeiledFury,
+  @immortal_wombat, @Alcorsa, @calafex, @rimmyjob, @Matheus, @zezaovlr,
+  @Toireht, @L4Z3RB1, @kurdamir2, @andryi2509, @trollcze, @cykablyat,
+  @benadryldealer, @zezika, @Bert, @dilirity, @Vafelz, @najix,
+  @katzenmadchenaufbier, @Alake, @stiffe0114, @Buszman
+
+  30+ community-reported bug fixes since v1.0!
+
+
+  SPECIAL THANKS:
+  ---------------
+  - SPT Team - For making single-player Tarkov possible
+  - BepInEx Team - For the modding framework
+  - Anthropic - For creating Claude
+  - The SPT community - For testing, feedback, and patience
+
+
+  LICENSE:
+  --------
+  MIT License - Free to use, modify, and distribute.
+  Full license text in the LICENSE file.
+
+
+================================================================================
+                           FORGE PAGE
+================================================================================
+
+  https://forge.sp-tarkov.com/mod/2470/keep-starting-gear
+
+  Rate the mod, leave comments, get updates!
+
+
+================================================================================
+                             THE END
+================================================================================
+
+  Thanks for reading this far!
+
+  If you actually read this entire guide, you're already smarter than
+  90% of the people who will ask questions that are answered in here.
+
+  Good luck out there, PMC. May your extracts be many and your deaths
+  be consequence-free.
+
+  - Blackhorse311 & Claude
+
+================================================================================
