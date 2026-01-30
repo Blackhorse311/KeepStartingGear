@@ -142,16 +142,16 @@ public class RaidEndInterceptor(
                 logger.Debug($"{Constants.LogPrefix} PMC death detected - checking for snapshot...");
 
                 // Try to restore from snapshot
-                bool restored = TryRestoreFromSnapshot(sessionID, info);
+                var restoreResult = TryRestoreFromSnapshot(sessionID, info);
 
-                if (restored)
+                if (restoreResult.Success)
                 {
                     logger.Info($"{Constants.LogPrefix} Inventory restored from snapshot!");
 
-                    // Set flag so CustomInRaidHelper skips DeleteInventory
-                    // Using MarkRestored() instead of direct assignment for thread safety
-                    SnapshotRestorationState.MarkRestored();
-                    logger.Debug($"{Constants.LogPrefix} Set InventoryRestoredFromSnapshot flag to skip DeleteInventory");
+                    // Set flag so CustomInRaidHelper only preserves managed slots
+                    // Non-managed slots will still be deleted normally (player loses unprotected items)
+                    SnapshotRestorationState.MarkRestored(restoreResult.ManagedSlotIds);
+                    logger.Debug($"{Constants.LogPrefix} Set InventoryRestoredFromSnapshot flag with {restoreResult.ManagedSlotIds?.Count ?? 0} managed slots");
                 }
                 else
                 {
@@ -193,15 +193,15 @@ public class RaidEndInterceptor(
     /// </summary>
     /// <param name="sessionID">Player's session/profile ID</param>
     /// <param name="info">Raid end data containing the profile to modify</param>
-    /// <returns>True if restoration succeeded, false otherwise</returns>
-    private bool TryRestoreFromSnapshot(MongoId sessionID, EndLocalRaidRequestData info)
+    /// <returns>A RestoreResult containing success status, item counts, managed slot IDs, and any error message.</returns>
+    private RestoreResult TryRestoreFromSnapshot(MongoId sessionID, EndLocalRaidRequestData info)
     {
         // Get current inventory from the raid end data
         var currentInventory = info.Results?.Profile?.Inventory;
         if (currentInventory == null || currentInventory.Items == null)
         {
             logger.Error($"{Constants.LogPrefix} Cannot access profile inventory");
-            return false;
+            return RestoreResult.Failed("Cannot access profile inventory");
         }
 
         // Delegate to shared restorer
@@ -224,7 +224,7 @@ public class RaidEndInterceptor(
             logger.Warning($"{Constants.LogPrefix} Restoration failed: {result.ErrorMessage}");
         }
 
-        return result.Success;
+        return result;
     }
 
     // ========================================================================

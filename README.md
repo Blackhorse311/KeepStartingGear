@@ -181,12 +181,85 @@ Settings are locked when a raid starts. Changing snapshot mode mid-raid shows a 
 
 ## Compatibility
 
-| Mod | Status | Notes |
-|-----|--------|-------|
+| Mod/Version | Status | Notes |
+|-------------|--------|-------|
 | **SPT 4.0.x** | ✅ Supported | Tested on 4.0.11 |
+| **SPT 3.x** | ❌ Not Supported | [See explanation below](#older-spt-versions) |
 | **SVM** | ✅ Compatible | Disable Softcore Mode & Safe Exit |
-| **Fika** | ❌ Not Supported | Single-player only |
+| **FIKA** | ❌ Not Compatible | [See explanation below](#fika-incompatibility) |
 | **Custom Items** | ✅ Full Support | Works with any modded gear |
+
+### Older SPT Versions
+
+**Keep Starting Gear requires SPT 4.0.x.** It does not support SPT 3.11.4 or earlier versions.
+
+#### Why Older Versions Aren't Supported
+
+We investigated SPT 3.11.4 compatibility (see [ADR-002](docs/adr/ADR-002-spt-3114-compatibility.md) for full analysis) and found:
+
+| What's The Same | What's Different |
+|-----------------|------------------|
+| Equipment slots (all 16) | Server mod installation path |
+| Item serialization format | NuGet package versions |
+| Exit status handling | API signatures (unknown) |
+| BepInEx plugin system | Field vs property access patterns |
+
+While the core game systems are ~95% identical, the **server-side mod loading mechanism is completely different**:
+
+```
+SPT 3.11.4: BepInEx/plugins/spt/{ModFolder}/
+SPT 4.0.x:  SPT_Data/Server/mods/{ModFolder}/
+```
+
+Additionally:
+- Unknown if SPT 3.11.4 NuGet packages exist for compilation
+- The `MatchCallbacks` API our server mod inherits from may have changed
+- The author doesn't run 3.11.4 and cannot test changes
+
+#### Recommendation for 3.11.4 Users
+
+**Upgrade to SPT 4.0.x** - It's the current version with active support and the best modding ecosystem.
+
+---
+
+### FIKA Incompatibility
+
+**Keep Starting Gear does not work with FIKA** (the multiplayer co-op mod). This is due to fundamental architectural differences, not a simple oversight.
+
+#### Why It Won't Work
+
+FIKA processes death differently than single-player SPT:
+
+| Single-Player SPT | FIKA Multiplayer |
+|-------------------|------------------|
+| Death → Server intercepts → Restore gear → Skip deletion | Death → Network sync → Profile serialized → Server notified |
+
+In FIKA, the player's profile is serialized and sent to the server **before** our restoration logic can run. By the time we could intercept, it's too late - the "dead" inventory has already been saved.
+
+#### Technical Details
+
+We thoroughly investigated FIKA compatibility (see [ADR-001](docs/adr/ADR-001-fika-compatibility.md) for full analysis):
+
+- FIKA's `CoopGame.SavePlayer()` serializes the dead profile before our server-side intercept
+- FIKA's event system (`FikaGameEndedEvent`) fires too early for inventory restoration
+- The narrow timing window between death and profile serialization makes reliable restoration difficult
+- Host vs. client player distinction adds complexity
+
+#### Why We're Not Adding Support
+
+1. **Testing**: The mod author doesn't use FIKA and cannot adequately test changes
+2. **Maintenance**: FIKA updates frequently; each update could break compatibility
+3. **Complexity**: Would require ~500-1000 lines of FIKA-specific code
+4. **Reliability**: Timing-dependent restoration is fragile
+
+#### Community Contributions Welcome
+
+If you're a FIKA user who wants this functionality and can commit to testing, the project is MIT licensed. You're welcome to:
+- Fork the project and add FIKA support
+- Submit a pull request with a FIKA compatibility layer
+- Maintain a FIKA-specific version
+
+We'd be happy to review and potentially merge well-tested FIKA support contributed by the community.
 
 ---
 
@@ -240,12 +313,23 @@ dotnet build src/servermod/Blackhorse311.KeepStartingGear.Server.csproj
 
 ---
 
-## Security
+## Security & Compliance
 
 Each release includes a VirusTotal scan:
 - **v1.4.9**: [VirusTotal Scan](https://www.virustotal.com/gui/file/ff232a9db482b915d31ac82ac262af5379372e27698f35c82bf03deb668d3924) - 0/70 clean
 
 Source code is available on GitHub for independent verification and building.
+
+### Forge Compliance
+
+This mod meets all [SPT Forge Content Guidelines](https://forge.sp-tarkov.com/content-guidelines) and [Community Standards](https://forge.sp-tarkov.com/community-standards). See our detailed **[Forge Compliance Statement](docs/FORGE_COMPLIANCE.md)** for a line-by-line breakdown of how we meet each requirement.
+
+**Highlights:**
+- ✅ MIT licensed, fully open source
+- ✅ Zero network activity (fully offline)
+- ✅ No obfuscation, no data collection
+- ✅ 26 security fixes in v2.0.0
+- ✅ Comprehensive documentation
 
 ---
 

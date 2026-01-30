@@ -496,6 +496,7 @@ public static class Settings
                 new ConfigurationManagerAttributes { Order = order-- }
             )
         );
+        SnapshotModeOption.SettingChanged += OnSettingChangedSwitchToCustom;
 
         ExcludeFIRItems = config.Bind(
             CategorySnapshot,
@@ -509,6 +510,7 @@ public static class Settings
                 new ConfigurationManagerAttributes { Order = order-- }
             )
         );
+        ExcludeFIRItems.SettingChanged += OnSettingChangedSwitchToCustom;
 
         ManualSnapshotCooldown = config.Bind(
             CategorySnapshot,
@@ -580,6 +582,7 @@ public static class Settings
                 new ConfigurationManagerAttributes { Order = order-- }
             )
         );
+        ExcludeInsuredItems.SettingChanged += OnSettingChangedSwitchToCustom;
 
         MaxManualSnapshots = config.Bind(
             CategorySnapshot,
@@ -728,6 +731,7 @@ public static class Settings
                 new ConfigurationManagerAttributes { Order = order-- }
             )
         );
+        SaveSecuredContainer.SettingChanged += OnSettingChangedSwitchToCustom;
 
         SaveCompass = BindInventorySlot(config, "Compass", ref order);
         SaveSpecialSlot1 = BindInventorySlot(config, "Special Slot 1", ref order);
@@ -800,7 +804,7 @@ public static class Settings
     /// <returns>The created ConfigEntry for this slot</returns>
     private static ConfigEntry<bool> BindInventorySlot(ConfigFile config, string slotName, ref int order)
     {
-        return config.Bind(
+        var entry = config.Bind(
             CategoryInventory,
             slotName,
             true, // Default: save everything - users opt-out of specific slots
@@ -810,6 +814,36 @@ public static class Settings
                 new ConfigurationManagerAttributes { Order = order-- }
             )
         );
+
+        // Auto-switch to Custom preset when user changes individual slot settings
+        entry.SettingChanged += OnSettingChangedSwitchToCustom;
+
+        return entry;
+    }
+
+    /// <summary>
+    /// Event handler that switches to Custom preset when any setting is manually changed.
+    /// This ensures user customizations are preserved and not overwritten by presets.
+    /// </summary>
+    private static void OnSettingChangedSwitchToCustom(object sender, System.EventArgs e)
+    {
+        // Don't switch to Custom if we're currently applying a preset
+        if (_applyingPreset) return;
+
+        // Don't switch if already Custom
+        if (ActivePreset.Value == ConfigPreset.Custom) return;
+
+        // Switch to Custom to preserve user's manual changes
+        _applyingPreset = true; // Prevent recursive calls
+        try
+        {
+            ActivePreset.Value = ConfigPreset.Custom;
+            Plugin.Log.LogDebug("Switched to Custom preset due to manual setting change");
+        }
+        finally
+        {
+            _applyingPreset = false;
+        }
     }
 
     /// <summary>

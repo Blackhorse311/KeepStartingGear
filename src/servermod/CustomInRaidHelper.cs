@@ -107,7 +107,8 @@ public class CustomInRaidHelper : InRaidHelper
     /// <param name="databaseService">Database access service</param>
     /// <remarks>
     /// All parameters are passed to the base class constructor.
-    /// We only store the logger locally for use in our override.
+    /// Additionally, we store the logger locally and initialize the
+    /// snapshot restorer for use in our override methods.
     /// </remarks>
     public CustomInRaidHelper(
         ISptLogger<InRaidHelper> logger,
@@ -127,7 +128,7 @@ public class CustomInRaidHelper : InRaidHelper
     // ========================================================================
 
     /// <summary>
-    /// Override DeleteInventory to skip deletion when inventory was restored from snapshot.
+    /// Override DeleteInventory to selectively skip deletion for managed slots when inventory was restored from snapshot.
     /// </summary>
     /// <param name="pmcData">The player's PMC data containing inventory</param>
     /// <param name="sessionId">The session/profile ID</param>
@@ -137,14 +138,28 @@ public class CustomInRaidHelper : InRaidHelper
     /// We use TryConsume() to atomically check and reset the flag in a single operation,
     /// preventing race conditions.
     /// </para>
+    /// <para>
+    /// When inventory was restored from a snapshot with specific managed slots:
+    /// - Items in managed slots are PRESERVED (restored from snapshot)
+    /// - Items in non-managed slots are DELETED (normal death penalty applies)
+    /// </para>
     /// </remarks>
     public override void DeleteInventory(PmcData pmcData, MongoId sessionId)
     {
-        // Atomically check and consume the restoration flag
-        // TryConsume() returns true if flag was set (and resets it), false otherwise
-        if (SnapshotRestorationState.TryConsume())
+        // Atomically check and consume the restoration flag, getting managed slots
+        if (SnapshotRestorationState.TryConsume(out var managedSlotIds))
         {
-            _logger.Debug($"{Constants.LogPrefix} Skipping DeleteInventory - inventory was restored from snapshot");
+            if (managedSlotIds == null || managedSlotIds.Count == 0)
+            {
+                // Legacy behavior: no slot info, skip all deletion
+                _logger.Debug($"{Constants.LogPrefix} Skipping DeleteInventory - inventory was restored from snapshot (all slots)");
+                return;
+            }
+
+            // New behavior: Only preserve managed slots, delete items from non-managed slots
+            _logger.Debug($"{Constants.LogPrefix} Partial DeleteInventory - preserving {managedSlotIds.Count} managed slots, deleting non-managed");
+            DeleteNonManagedSlotItems(pmcData, managedSlotIds);
+            SnapshotRestorationState.ClearManagedSlots();
             return;
         }
 
@@ -163,7 +178,13 @@ public class CustomInRaidHelper : InRaidHelper
             {
                 _logger.Debug($"{Constants.LogPrefix} Skipped {result.NonManagedSkipped} items from non-managed slots");
             }
-            // Don't call base - we've restored the inventory
+
+            // If we have managed slot IDs, delete items from non-managed slots
+            if (result.ManagedSlotIds != null && result.ManagedSlotIds.Count > 0)
+            {
+                _logger.Debug($"{Constants.LogPrefix} Partial DeleteInventory - preserving {result.ManagedSlotIds.Count} managed slots");
+                DeleteNonManagedSlotItems(pmcData, result.ManagedSlotIds);
+            }
             return;
         }
 
@@ -176,5 +197,87 @@ public class CustomInRaidHelper : InRaidHelper
         // Normal death processing - no snapshot found
         _logger.Debug($"{Constants.LogPrefix} Normal death processing - DeleteInventory will proceed");
         base.DeleteInventory(pmcData, sessionId);
+    }
+
+    /// <summary>
+    /// Deletes equipment items from slots that are NOT in the managed set.
+    /// Items in managed slots are preserved (they were restored from snapshot).
+    /// </summary>
+    /// <param name="pmcData">The player's PMC data containing inventory</param>
+    /// <param name="managedSlotIds">Set of slot IDs to preserve (case-insensitive)</param>
+    private void DeleteNonManagedSlotItems(PmcData pmcData, HashSet<string> managedSlotIds)
+    {
+        var inventory = pmcData.Inventory;
+        if (inventory?.Items == null)
+        {
+            _logger.Warning($"{Constants.LogPrefix} Cannot delete non-managed slots - inventory is null");
+            return;
+        }
+
+        // Find the Equipment container ID
+        string? equipmentId = null;
+        foreach (var item in inventory.Items)
+        {
+            if (item.Template == Constants.EquipmentTemplateId)
+            {
+                equipmentId = item.Id;
+                break;
+            }
+        }
+
+        if (string.IsNullOrEmpty(equipmentId))
+        {
+            _logger.Warning($"{Constants.LogPrefix} Cannot find Equipment container");
+            return;
+        }
+
+        // Build a set of item IDs to remove (items in non-managed equipment slots)
+        var itemsToRemove = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var item in inventory.Items)
+        {
+            // Skip if not directly in Equipment container
+            if (item.ParentId != equipmentId)
+                continue;
+
+            // Get the slot name
+            var slotId = item.SlotId;
+            if (string.IsNullOrEmpty(slotId))
+                continue;
+
+            // If this slot is NOT managed, mark the item and all children for deletion
+            if (!managedSlotIds.Contains(slotId))
+            {
+                _logger.Debug($"{Constants.LogPrefix} Deleting item in non-managed slot '{slotId}': {item.Id}");
+                CollectItemAndChildren(item.Id, inventory.Items, itemsToRemove);
+            }
+        }
+
+        if (itemsToRemove.Count == 0)
+        {
+            _logger.Debug($"{Constants.LogPrefix} No items to delete from non-managed slots");
+            return;
+        }
+
+        // Remove the items
+        int removed = inventory.Items.RemoveAll(item => itemsToRemove.Contains(item.Id));
+        _logger.Info($"{Constants.LogPrefix} Deleted {removed} items from non-managed equipment slots");
+    }
+
+    /// <summary>
+    /// Recursively collects an item and all its children for deletion.
+    /// </summary>
+    private void CollectItemAndChildren(string itemId, List<SPTarkov.Server.Core.Models.Eft.Common.Tables.Item> items, HashSet<string> toRemove)
+    {
+        toRemove.Add(itemId);
+
+        // Find all children (items whose ParentId is this item)
+        foreach (var item in items)
+        {
+            if (item.ParentId == itemId && !toRemove.Contains(item.Id))
+            {
+                CollectItemAndChildren(item.Id, items, toRemove);
+            }
+        }
     }
 }

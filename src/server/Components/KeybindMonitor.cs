@@ -456,12 +456,12 @@ public class KeybindMonitor : MonoBehaviour
             }
 
             // ================================================================
-            // ManualOnly Mode: Check one-per-map limit (legacy behavior)
+            // ManualOnly Mode: Check snapshot limit using MaxManualSnapshots setting
             // ================================================================
-            if (mode == SnapshotMode.ManualOnly && inRaid && HasSnapshotForCurrentRaid(location))
+            if (mode == SnapshotMode.ManualOnly && inRaid && _manualSnapshotCount >= maxSnapshots)
             {
-                Plugin.Log.LogDebug($"Snapshot already taken for {location} this raid");
-                NotificationOverlay.ShowWarning("Snapshot Limit Reached!\nOne per map per raid");
+                Plugin.Log.LogDebug($"Manual snapshot limit reached - {_manualSnapshotCount}/{maxSnapshots} taken");
+                NotificationOverlay.ShowWarning($"Snapshot Limit Reached!\n{maxSnapshots} snapshot{(maxSnapshots > 1 ? "s" : "")} per raid");
                 return;
             }
 

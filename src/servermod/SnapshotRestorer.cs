@@ -42,9 +42,15 @@ public class RestoreResult
     /// <summary>Error message if restoration failed.</summary>
     public string? ErrorMessage { get; init; }
 
+    /// <summary>
+    /// The set of slot IDs that were managed (restored) from the snapshot.
+    /// Items in these slots should be preserved; items in other slots should be deleted normally.
+    /// </summary>
+    public HashSet<string>? ManagedSlotIds { get; init; }
+
     /// <summary>Creates a successful result.</summary>
-    public static RestoreResult Succeeded(int itemsAdded, int duplicatesSkipped = 0, int nonManagedSkipped = 0)
-        => new() { Success = true, ItemsAdded = itemsAdded, DuplicatesSkipped = duplicatesSkipped, NonManagedSkipped = nonManagedSkipped };
+    public static RestoreResult Succeeded(int itemsAdded, int duplicatesSkipped = 0, int nonManagedSkipped = 0, HashSet<string>? managedSlotIds = null)
+        => new() { Success = true, ItemsAdded = itemsAdded, DuplicatesSkipped = duplicatesSkipped, NonManagedSkipped = nonManagedSkipped, ManagedSlotIds = managedSlotIds };
 
     /// <summary>Creates a failed result with error message.</summary>
     public static RestoreResult Failed(string errorMessage)
@@ -293,7 +299,7 @@ public class SnapshotRestorer<TLogger>
         // Delete snapshot file after successful restoration
         TryDeleteSnapshotFile(snapshotPath);
 
-        return RestoreResult.Succeeded(addedCount, skippedDuplicates, skippedNonManaged);
+        return RestoreResult.Succeeded(addedCount, skippedDuplicates, skippedNonManaged, includedSlotIds);
     }
 
     /// <summary>

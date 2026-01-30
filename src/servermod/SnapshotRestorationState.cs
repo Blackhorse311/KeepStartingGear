@@ -48,11 +48,11 @@ namespace Blackhorse311.KeepStartingGear.Server;
 /// <list type="number">
 ///   <item>Player dies -> RaidEndInterceptor.EndLocalRaid() is called</item>
 ///   <item>RaidEndInterceptor finds snapshot and restores inventory</item>
-///   <item>RaidEndInterceptor sets InventoryRestoredFromSnapshot = true</item>
+///   <item>RaidEndInterceptor sets InventoryRestoredFromSnapshot = true with managed slots</item>
 ///   <item>Normal death processing continues...</item>
 ///   <item>SPT calls InRaidHelper.DeleteInventory()</item>
 ///   <item>CustomInRaidHelper calls TryConsume(), which returns true and resets flag</item>
-///   <item>Deletion is skipped</item>
+///   <item>Deletion is skipped for MANAGED slots only; non-managed slots are deleted normally</item>
 /// </list>
 /// </remarks>
 public static class SnapshotRestorationState
@@ -72,6 +72,12 @@ public static class SnapshotRestorationState
     /// Default value is false (no restoration performed).
     /// </remarks>
     private static readonly ThreadLocal<bool> _inventoryRestoredFromSnapshot = new(() => false);
+
+    /// <summary>
+    /// Thread-local storage for the set of slot IDs that were managed (restored) from snapshot.
+    /// Only items in these slots should be preserved; items in other slots should be deleted normally.
+    /// </summary>
+    private static readonly ThreadLocal<HashSet<string>?> _managedSlotIds = new(() => null);
 
     /// <summary>
     /// Lock object for atomic operations (belt-and-suspenders with ThreadLocal).
@@ -98,24 +104,44 @@ public static class SnapshotRestorationState
     }
 
     /// <summary>
-    /// Sets the restoration flag to true.
+    /// Sets the restoration flag to true and stores the managed slot IDs.
     /// Call this after successfully restoring inventory from a snapshot.
     /// </summary>
+    /// <param name="managedSlotIds">The set of slot IDs that were managed (restored) from snapshot.
+    /// Only items in these slots will be preserved; items in other slots will be deleted normally.</param>
     /// <remarks>
     /// Only RaidEndInterceptor should call this method.
     /// </remarks>
-    public static void MarkRestored()
+    public static void MarkRestored(HashSet<string>? managedSlotIds = null)
     {
         lock (_lock)
         {
             _inventoryRestoredFromSnapshot.Value = true;
+            _managedSlotIds.Value = managedSlotIds != null ? new HashSet<string>(managedSlotIds, StringComparer.OrdinalIgnoreCase) : null;
         }
     }
 
     /// <summary>
-    /// Atomically checks if restoration occurred and resets the flag.
-    /// This is the ONLY method that should be used to check the flag.
+    /// Gets the set of slot IDs that were managed (restored) from snapshot.
+    /// Returns null if all slots should be preserved (legacy behavior).
     /// </summary>
+    public static HashSet<string>? ManagedSlotIds
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _managedSlotIds.Value;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Atomically checks if restoration occurred and returns the managed slot IDs.
+    /// This resets the flag but preserves the managed slot IDs for use by DeleteInventory.
+    /// Prefer using TryConsume methods over reading InventoryRestoredFromSnapshot directly.
+    /// </summary>
+    /// <param name="managedSlotIds">Output: The set of managed slot IDs, or null if all slots should be preserved.</param>
     /// <returns>True if inventory was restored (flag was set), false otherwise.</returns>
     /// <remarks>
     /// <para>
@@ -127,14 +153,26 @@ public static class SnapshotRestorationState
     /// until <see cref="MarkRestored"/> is called again.
     /// </para>
     /// </remarks>
-    public static bool TryConsume()
+    public static bool TryConsume(out HashSet<string>? managedSlotIds)
     {
         lock (_lock)
         {
             bool wasRestored = _inventoryRestoredFromSnapshot.Value;
+            managedSlotIds = _managedSlotIds.Value;
             _inventoryRestoredFromSnapshot.Value = false;
+            // Keep managedSlotIds until fully consumed
             return wasRestored;
         }
+    }
+
+    /// <summary>
+    /// Atomically checks if restoration occurred and resets the flag.
+    /// Convenience overload that discards the managed slot IDs.
+    /// </summary>
+    /// <returns>True if inventory was restored (flag was set), false otherwise.</returns>
+    public static bool TryConsume()
+    {
+        return TryConsume(out _);
     }
 
     /// <summary>
@@ -157,6 +195,18 @@ public static class SnapshotRestorationState
         lock (_lock)
         {
             _inventoryRestoredFromSnapshot.Value = false;
+            _managedSlotIds.Value = null;
+        }
+    }
+
+    /// <summary>
+    /// Clears the managed slot IDs after they have been used.
+    /// </summary>
+    public static void ClearManagedSlots()
+    {
+        lock (_lock)
+        {
+            _managedSlotIds.Value = null;
         }
     }
 }
