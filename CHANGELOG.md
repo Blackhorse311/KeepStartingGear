@@ -5,6 +5,46 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2026-02-01
+
+### Fixed
+
+- **All Looted Items Kept After Death (Issue #18)**: Fixed critical bug where players kept ALL items found in raid after death, plus snapshot items were restored on top. Root cause was threefold:
+  1. Equipment container was captured with corrupt data (self-referential parentId, session ID as slotId)
+  2. Item removal logic only checked ONE Equipment container ID, missing items parented to different Equipment containers
+  3. Server removed 0 items from managed slots due to ID mismatch between raid-end and profile Equipment containers
+  (Reported by @thechieff21 via GitHub #18)
+
+- **Unprotected Weapon Slots Preserving Items (Issue #17)**: Fixed bug where weapons in unchecked/unprotected slots (FirstPrimaryWeapon, SecondPrimaryWeapon, Holster) were preserved after death instead of being lost. When a slot is NOT protected, items should follow normal death mechanics. The fix:
+  1. Distinguish between `null` managedSlotIds (legacy: preserve all) and empty set (no protection: normal death)
+  2. When no slots are protected, now correctly calls base DeleteInventory for normal death processing
+  (Reported by @Kralicek94 via GitHub #17)
+
+- **Equipment Container Capture**: The Equipment container (template `55d7217a4bdc2d86028b456d`) is now captured with only its ID, without setting parentId or slotId. This prevents corrupt snapshot data that caused restoration failures.
+
+- **Multiple Equipment Container ID Handling**: Both `SnapshotRestorer` and `CustomInRaidHelper` now find ALL Equipment container IDs in inventory and check items against all of them. This handles edge cases where items may be parented to different Equipment containers (raid-end state vs snapshot).
+
+- **Secure Container Disappearing (Forge Report)**: Fixed critical bug where the secure container could be deleted after multiple deaths. The SecuredContainer slot is now explicitly protected in both restoration paths - it's NEVER deleted regardless of configuration, matching normal Tarkov behavior where your secure container is always preserved on death.
+  (Reported by @20fpsguy on Forge)
+
+### Technical
+
+- **Client Fix** (`InventoryService.cs`): Added early return for Equipment container in `ConvertToSerializedItem()` to skip parentId/slotId assignment
+- **Server Fix** (`SnapshotRestorer.cs`): Added `FindAllEquipmentContainerIds()` method and updated `RemoveManagedSlotItems()` to check against all Equipment container IDs; SecuredContainer slot is now explicitly preserved
+- **Server Fix** (`CustomInRaidHelper.cs`): Updated `DeleteInventory()` to distinguish null vs empty managedSlotIds, and updated `DeleteNonManagedSlotItems()` to check all Equipment containers; Added `alwaysPreservedSlots` set that includes SecuredContainer
+
+### Contributors
+
+- **@thechieff21** - Reported all items kept after death with detailed server logs via GitHub #18
+- **@Kralicek94** - Reported unprotected weapon slots misbehaving via GitHub #17
+- **@20fpsguy** - Reported secure container disappearing on Forge
+
+### Compatibility
+
+- SPT 4.0.x (tested on 4.0.11)
+
+---
+
 ## [2.0.0] - 2026-01-27
 
 ### Added - New UI Features

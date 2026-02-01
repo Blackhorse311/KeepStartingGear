@@ -1224,6 +1224,21 @@ public class InventoryService
             };
 
             // ================================================================
+            // Special Handling for Equipment Container
+            // The Equipment container is the root of the equipment hierarchy.
+            // It should NOT have parentId or slotId set because:
+            // 1. Its Parent property can create a self-reference (parentId = own ID)
+            // 2. Its CurrentAddress.Container.ID returns the session ID, not a slot
+            // The server only needs the Equipment ID to remap child item parents.
+            // ================================================================
+            const string EquipmentTemplateId = "55d7217a4bdc2d86028b456d";
+            if (item.TemplateId.ToString() == EquipmentTemplateId)
+            {
+                Plugin.Log.LogDebug($"[EQUIPMENT] Equipment container captured (ID={item.Id}) - skipping parentId/slotId");
+                return serialized;
+            }
+
+            // ================================================================
             // Parent Information
             // Used to reconstruct the item hierarchy during restoration
             // ================================================================

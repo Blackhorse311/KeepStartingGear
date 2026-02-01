@@ -342,6 +342,25 @@ public class SnapshotRestorer<TLogger>
     }
 
     /// <summary>
+    /// Finds ALL Equipment container IDs in the inventory.
+    /// This handles edge cases where multiple Equipment containers exist (e.g., stale
+    /// snapshot data or items with different parent Equipment IDs).
+    /// </summary>
+    private HashSet<string> FindAllEquipmentContainerIds(List<Item> items)
+    {
+        var equipmentIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in items)
+        {
+            if (item.Template == Constants.EquipmentTemplateId && !string.IsNullOrEmpty(item.Id))
+            {
+                equipmentIds.Add(item.Id);
+                _logger.Debug($"{Constants.LogPrefix} Found Equipment container: {item.Id}");
+            }
+        }
+        return equipmentIds;
+    }
+
+    /// <summary>
     /// Finds the Equipment container ID in the snapshot.
     /// </summary>
     private string? FindSnapshotEquipmentId(List<SnapshotItem> items)
@@ -498,6 +517,8 @@ public class SnapshotRestorer<TLogger>
 
     /// <summary>
     /// Removes items from managed equipment slots.
+    /// Now checks against ALL Equipment container IDs to handle edge cases where
+    /// items may have different Equipment container parents.
     /// </summary>
     private int RemoveManagedSlotItems(
         List<Item> items,
@@ -508,15 +529,43 @@ public class SnapshotRestorer<TLogger>
     {
         var equipmentItemIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        // Find direct children of Equipment to remove
+        // Find ALL Equipment container IDs to handle edge cases where items
+        // may be parented to different Equipment containers (e.g., raid-end state
+        // vs snapshot Equipment IDs)
+        var allEquipmentIds = FindAllEquipmentContainerIds(items);
+
+        // Always include the profile's Equipment ID
+        if (!string.IsNullOrEmpty(profileEquipmentId))
+        {
+            allEquipmentIds.Add(profileEquipmentId);
+        }
+
+        _logger.Debug($"{Constants.LogPrefix} Checking against {allEquipmentIds.Count} Equipment container ID(s)");
+
+        // The SecuredContainer SLOT should never be removed - it's always preserved in Tarkov.
+        // We may manage its CONTENTS (restore from snapshot), but the container itself must stay.
+        // This prevents the secure container from disappearing if it was empty at snapshot time.
+        const string SecuredContainerSlot = "SecuredContainer";
+
+        // Find direct children of ANY Equipment container to remove
         foreach (var item in items)
         {
-            if (item.ParentId != profileEquipmentId) continue;
+            // Check if item's parent is ANY Equipment container
+            if (string.IsNullOrEmpty(item.ParentId) || !allEquipmentIds.Contains(item.ParentId)) continue;
 
             // LOG-001: Validate item.Id before use
             if (string.IsNullOrEmpty(item.Id)) continue;
 
             var slotId = item.SlotId ?? "";
+
+            // NEVER remove the SecuredContainer itself - only manage its contents
+            // The container must always exist; we can clear/restore its contents but not delete it
+            if (string.Equals(slotId, SecuredContainerSlot, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.Debug($"{Constants.LogPrefix} PRESERVING SecuredContainer slot (container always kept, contents may be managed separately)");
+                continue;
+            }
+
             bool slotIsManaged = IsSlotManaged(slotId, includedSlotIds, snapshotSlotIds, emptySlotIds);
 
             if (!slotIsManaged)
