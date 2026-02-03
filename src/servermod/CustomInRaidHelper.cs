@@ -149,14 +149,25 @@ public class CustomInRaidHelper : InRaidHelper
         // Atomically check and consume the restoration flag, getting managed slots
         if (SnapshotRestorationState.TryConsume(out var managedSlotIds))
         {
-            if (managedSlotIds == null || managedSlotIds.Count == 0)
+            if (managedSlotIds == null)
             {
-                // Legacy behavior: no slot info, skip all deletion
-                _logger.Debug($"{Constants.LogPrefix} Skipping DeleteInventory - inventory was restored from snapshot (all slots)");
+                // Legacy behavior (null): no slot info, skip all deletion
+                // This maintains backwards compatibility with pre-1.4 snapshots
+                _logger.Debug($"{Constants.LogPrefix} Skipping DeleteInventory - inventory was restored from snapshot (legacy: all slots preserved)");
                 return;
             }
 
-            // New behavior: Only preserve managed slots, delete items from non-managed slots
+            if (managedSlotIds.Count == 0)
+            {
+                // Empty set means NO slots are protected - use normal death processing
+                // This handles cases where user unchecked all protection options
+                _logger.Debug($"{Constants.LogPrefix} No managed slots configured - using normal death processing");
+                base.DeleteInventory(pmcData, sessionId);
+                SnapshotRestorationState.ClearManagedSlots();
+                return;
+            }
+
+            // Normal case: preserve managed slots, delete items from non-managed slots
             _logger.Debug($"{Constants.LogPrefix} Partial DeleteInventory - preserving {managedSlotIds.Count} managed slots, deleting non-managed");
             DeleteNonManagedSlotItems(pmcData, managedSlotIds);
             SnapshotRestorationState.ClearManagedSlots();
@@ -179,9 +190,21 @@ public class CustomInRaidHelper : InRaidHelper
                 _logger.Debug($"{Constants.LogPrefix} Skipped {result.NonManagedSkipped} items from non-managed slots");
             }
 
-            // If we have managed slot IDs, delete items from non-managed slots
-            if (result.ManagedSlotIds != null && result.ManagedSlotIds.Count > 0)
+            // Handle managed slot deletion based on slot info
+            if (result.ManagedSlotIds == null)
             {
+                // Legacy: no slot info, skip deletion (all preserved)
+                _logger.Debug($"{Constants.LogPrefix} Legacy snapshot - all slots preserved");
+            }
+            else if (result.ManagedSlotIds.Count == 0)
+            {
+                // Empty set: no slots protected, use normal death processing
+                _logger.Debug($"{Constants.LogPrefix} No managed slots - using normal death processing for equipment");
+                base.DeleteInventory(pmcData, sessionId);
+            }
+            else
+            {
+                // Normal: preserve managed, delete non-managed
                 _logger.Debug($"{Constants.LogPrefix} Partial DeleteInventory - preserving {result.ManagedSlotIds.Count} managed slots");
                 DeleteNonManagedSlotItems(pmcData, result.ManagedSlotIds);
             }
@@ -193,6 +216,10 @@ public class CustomInRaidHelper : InRaidHelper
         {
             _logger.Warning($"{Constants.LogPrefix} Snapshot restoration failed: {result.ErrorMessage}");
         }
+
+        // H-06 FIX: Clear state on ALL exit paths, not just success
+        // This prevents stale state from leaking to subsequent requests
+        SnapshotRestorationState.ClearManagedSlots();
 
         // Normal death processing - no snapshot found
         _logger.Debug($"{Constants.LogPrefix} Normal death processing - DeleteInventory will proceed");
@@ -214,36 +241,54 @@ public class CustomInRaidHelper : InRaidHelper
             return;
         }
 
-        // Find the Equipment container ID
-        string? equipmentId = null;
+        // Find ALL Equipment container IDs to handle edge cases where items may
+        // be parented to different Equipment containers
+        var allEquipmentIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var item in inventory.Items)
         {
-            if (item.Template == Constants.EquipmentTemplateId)
+            if (item.Template == Constants.EquipmentTemplateId && !string.IsNullOrEmpty(item.Id))
             {
-                equipmentId = item.Id;
-                break;
+                allEquipmentIds.Add(item.Id);
+                _logger.Debug($"{Constants.LogPrefix} Found Equipment container: {item.Id}");
             }
         }
 
-        if (string.IsNullOrEmpty(equipmentId))
+        if (allEquipmentIds.Count == 0)
         {
-            _logger.Warning($"{Constants.LogPrefix} Cannot find Equipment container");
+            _logger.Warning($"{Constants.LogPrefix} Cannot find any Equipment container");
             return;
         }
+
+        _logger.Debug($"{Constants.LogPrefix} Checking {allEquipmentIds.Count} Equipment container(s) for non-managed slots");
 
         // Build a set of item IDs to remove (items in non-managed equipment slots)
         var itemsToRemove = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+        // Slots that are NEVER deleted on death in normal Tarkov
+        // SecuredContainer is always preserved - this is core Tarkov behavior
+        // MEDIUM-002 FIX: Use shared constant from Constants class
+        var alwaysPreservedSlots = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            Constants.SecuredContainerSlot
+        };
+
         foreach (var item in inventory.Items)
         {
-            // Skip if not directly in Equipment container
-            if (item.ParentId != equipmentId)
+            // Skip if not directly in ANY Equipment container
+            if (string.IsNullOrEmpty(item.ParentId) || !allEquipmentIds.Contains(item.ParentId))
                 continue;
 
             // Get the slot name
             var slotId = item.SlotId;
             if (string.IsNullOrEmpty(slotId))
                 continue;
+
+            // NEVER delete SecuredContainer - it's always preserved in normal Tarkov
+            if (alwaysPreservedSlots.Contains(slotId))
+            {
+                _logger.Debug($"{Constants.LogPrefix} Preserving '{slotId}' (always kept in normal Tarkov)");
+                continue;
+            }
 
             // If this slot is NOT managed, mark the item and all children for deletion
             if (!managedSlotIds.Contains(slotId))
@@ -260,7 +305,9 @@ public class CustomInRaidHelper : InRaidHelper
         }
 
         // Remove the items
-        int removed = inventory.Items.RemoveAll(item => itemsToRemove.Contains(item.Id));
+        // H-05 FIX: Null-safe check on item.Id before passing to HashSet.Contains
+        int removed = inventory.Items.RemoveAll(item =>
+            !string.IsNullOrEmpty(item.Id) && itemsToRemove.Contains(item.Id));
         _logger.Info($"{Constants.LogPrefix} Deleted {removed} items from non-managed equipment slots");
     }
 
@@ -269,11 +316,19 @@ public class CustomInRaidHelper : InRaidHelper
     /// </summary>
     private void CollectItemAndChildren(string itemId, List<SPTarkov.Server.Core.Models.Eft.Common.Tables.Item> items, HashSet<string> toRemove)
     {
+        // CRITICAL-003 FIX: Validate itemId before use to prevent null reference exceptions
+        if (string.IsNullOrEmpty(itemId))
+            return;
+
         toRemove.Add(itemId);
 
         // Find all children (items whose ParentId is this item)
         foreach (var item in items)
         {
+            // CRITICAL-003 FIX: Check item.Id for null BEFORE using it in Contains() or recursion
+            if (string.IsNullOrEmpty(item.Id))
+                continue;
+
             if (item.ParentId == itemId && !toRemove.Contains(item.Id))
             {
                 CollectItemAndChildren(item.Id, items, toRemove);

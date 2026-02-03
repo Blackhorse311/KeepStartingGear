@@ -83,14 +83,53 @@ public class RaidEndInterceptor(
     private readonly string _snapshotsPath = SnapshotRestorerHelper.ResolveSnapshotsPath();
 
     /// <summary>
-    /// Shared restorer instance - lazy initialized to use logger.
+    /// Logger instance stored for use in lazy initialization.
+    /// CRITICAL-001 FIX: Store logger reference explicitly to avoid capturing constructor parameter in field initializer.
     /// </summary>
-    private SnapshotRestorer<RaidEndInterceptor>? _restorer;
+    private readonly ISptLogger<RaidEndInterceptor> _logger = logger;
 
     /// <summary>
-    /// Gets or creates the snapshot restorer instance.
+    /// Lock object for thread-safe lazy initialization of the restorer.
+    /// LINUS-001 FIX: The ??= operator is NOT atomic - two threads could both see null
+    /// and create separate Lazy instances. Use explicit double-check locking.
     /// </summary>
-    private SnapshotRestorer<RaidEndInterceptor> Restorer => _restorer ??= new SnapshotRestorer<RaidEndInterceptor>(logger, _snapshotsPath);
+    private static readonly object _restorerInitLock = new();
+
+    /// <summary>
+    /// Thread-safe lazy initialization using Lazy&lt;T&gt; with ExecutionAndPublication mode.
+    /// LINUS-001 FIX: Initialize with explicit thread safety mode to prevent race conditions.
+    /// </summary>
+    private Lazy<SnapshotRestorer<RaidEndInterceptor>>? _restorerLazy;
+
+    /// <summary>
+    /// Gets or creates the snapshot restorer instance (thread-safe).
+    /// LINUS-001 FIX: Uses double-check locking pattern for safe lazy initialization.
+    /// The ??= operator alone is NOT sufficient - it's not atomic.
+    /// </summary>
+    private SnapshotRestorer<RaidEndInterceptor> Restorer
+    {
+        get
+        {
+            // First check without lock (fast path)
+            var lazy = _restorerLazy;
+            if (lazy != null)
+                return lazy.Value;
+
+            // Double-check with lock (slow path, only on first access)
+            lock (_restorerInitLock)
+            {
+                // Check again inside lock
+                if (_restorerLazy == null)
+                {
+                    _restorerLazy = new Lazy<SnapshotRestorer<RaidEndInterceptor>>(
+                        () => new SnapshotRestorer<RaidEndInterceptor>(_logger, SnapshotRestorerHelper.ResolveSnapshotsPath()),
+                        LazyThreadSafetyMode.ExecutionAndPublication
+                    );
+                }
+                return _restorerLazy.Value;
+            }
+        }
+    }
 
     // ========================================================================
     // Main Entry Point

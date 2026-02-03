@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Blackhorse311.KeepStartingGear.Constants;
 using Blackhorse311.KeepStartingGear.Models;
 
 namespace Blackhorse311.KeepStartingGear.Services;
@@ -326,8 +327,8 @@ public static class RestorationSummaryService
     /// </summary>
     private static bool IsContainerTemplate(string templateId)
     {
-        // Equipment container template
-        if (templateId == "55d7217a4bdc2d86028b456d")
+        // M-01 FIX: use constant for Equipment container template
+        if (templateId == TemplateIds.Equipment)
             return true;
 
         // Add other container templates as needed

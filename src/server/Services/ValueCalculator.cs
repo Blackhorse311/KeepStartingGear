@@ -23,6 +23,7 @@ using System.Reflection;
 using Comfort.Common;
 using EFT;
 using EFT.InventoryLogic;
+using Blackhorse311.KeepStartingGear.Constants;
 using Blackhorse311.KeepStartingGear.Models;
 
 namespace Blackhorse311.KeepStartingGear.Services;
@@ -74,8 +75,8 @@ public class ValueCalculator
         {
             foreach (var item in snapshot.Items)
             {
-                // Skip container items
-                if (item.Tpl == "55d7217a4bdc2d86028b456d") // Equipment
+                // Skip container items (M-01 FIX: use constant)
+                if (item.Tpl == TemplateIds.Equipment)
                     continue;
 
                 long itemValue = GetItemValue(item.Tpl);
@@ -181,8 +182,10 @@ public class ValueCalculator
 
             return currentValue.TotalValue - snapshotValue.TotalValue;
         }
-        catch
+        catch (Exception ex)
         {
+            // H-09 FIX: Log instead of silently swallowing
+            Plugin.Log.LogDebug($"[ValueCalculator] Error getting value difference: {ex.Message}");
             return 0;
         }
     }
@@ -290,7 +293,11 @@ public class ValueCalculator
                     return longPrice;
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            // H-09 FIX: Log instead of silently swallowing
+            Plugin.Log.LogDebug($"[ValueCalculator] Error getting CreditsPrice: {ex.Message}");
+        }
 
         return 0;
     }

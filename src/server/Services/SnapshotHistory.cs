@@ -89,17 +89,39 @@ public class SnapshotHistory
             }
 
             string currentPath = GetSnapshotPath(sessionId);
-            if (!File.Exists(currentPath))
+
+            // CRITICAL-001 FIX: Don't check File.Exists then File.Copy (TOCTOU race condition).
+            // Instead, read the file first. If it doesn't exist, we'll get FileNotFoundException.
+            byte[] currentContent;
+            try
             {
-                // No current snapshot to backup
+                currentContent = File.ReadAllBytes(currentPath);
+            }
+            catch (FileNotFoundException)
+            {
+                // No current snapshot to backup - this is normal
+                return;
+            }
+            catch (DirectoryNotFoundException)
+            {
+                // Directory doesn't exist yet - this is normal on first run
                 return;
             }
 
             // Step 1: Delete the oldest backup if it exists (makes room)
+            // Use try-catch for each file operation - don't check existence
             string oldestPath = GetHistoryPath(sessionId, maxHistory - 1);
-            if (File.Exists(oldestPath))
+            try
             {
                 File.Delete(oldestPath);
+            }
+            catch (FileNotFoundException)
+            {
+                // File didn't exist - that's fine
+            }
+            catch (DirectoryNotFoundException)
+            {
+                // Directory doesn't exist - that's fine
             }
 
             // Step 2: Shift existing backups up by one index (oldest to newest)
@@ -109,19 +131,23 @@ public class SnapshotHistory
                 string sourcePath = GetHistoryPath(sessionId, i);
                 string destPath = GetHistoryPath(sessionId, i + 1);
 
-                if (File.Exists(sourcePath))
+                try
                 {
-                    if (File.Exists(destPath))
-                        File.Delete(destPath);
+                    // Delete destination first, then move source
+                    try { File.Delete(destPath); } catch (FileNotFoundException) { }
                     File.Move(sourcePath, destPath);
+                }
+                catch (FileNotFoundException)
+                {
+                    // Source didn't exist - skip this shift
                 }
             }
 
-            // Step 3: Copy current snapshot to .1.json (most recent backup)
+            // Step 3: Write the snapshot content we already read to .1.json (most recent backup)
+            // We already have the content in memory, so no TOCTOU race here
             string backupPath = GetHistoryPath(sessionId, 1);
-            if (File.Exists(backupPath))
-                File.Delete(backupPath);
-            File.Copy(currentPath, backupPath);
+            try { File.Delete(backupPath); } catch (FileNotFoundException) { }
+            File.WriteAllBytes(backupPath, currentContent);
 
             Plugin.Log.LogDebug($"[SnapshotHistory] Backed up snapshot to {Path.GetFileName(backupPath)}");
         }

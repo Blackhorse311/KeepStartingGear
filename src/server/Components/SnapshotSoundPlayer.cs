@@ -19,13 +19,15 @@ namespace Blackhorse311.KeepStartingGear.Components;
 /// </summary>
 public static class SnapshotSoundPlayer
 {
-    // CON-003: Use volatile for thread-safe initialization flag
+    // HIGH-005 FIX: ALL cached fields must be volatile for correct DCL pattern
+    // Without volatile, other threads can see _initialized=true but stale null values
+    // for the other fields due to CPU/compiler reordering
     private static volatile bool _initialized;
     private static readonly object _initLock = new();
-    private static object _guiSoundsInstance;
-    private static MethodInfo _playMethod;
-    private static Type _soundEnumType;
-    private static object _skillSoundValue;
+    private static volatile object _guiSoundsInstance;
+    private static volatile MethodInfo _playMethod;
+    private static volatile Type _soundEnumType;
+    private static volatile object _skillSoundValue;
 
     /// <summary>
     /// Plays the skill/XP gain sound for the snapshot.

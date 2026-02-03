@@ -18,6 +18,7 @@ using UnityEngine;
 using Comfort.Common;
 using EFT;
 using Blackhorse311.KeepStartingGear.Configuration;
+using Blackhorse311.KeepStartingGear.Constants;
 using Blackhorse311.KeepStartingGear.Services;
 using Blackhorse311.KeepStartingGear.Models;
 
@@ -219,8 +220,8 @@ public class LossPreviewOverlay : MonoBehaviour
                     if (snapshotItemIds.Contains(item.Id))
                         continue;
 
-                    // Skip the Equipment container itself
-                    if (item.Tpl == "55d7217a4bdc2d86028b456d")
+                    // Skip the Equipment container itself (M-01 FIX: use constant)
+                    if (item.Tpl == TemplateIds.Equipment)
                         continue;
 
                     // NEW-001: Null-safe access to item.Tpl for ShortName

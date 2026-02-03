@@ -76,6 +76,25 @@ public static class EquipmentSlots
     public const string Pockets = "Pockets";
 
     // ========================================================================
+    // Utility Slots (C-03 FIX: Added missing slots)
+    // ========================================================================
+
+    /// <summary>Compass slot</summary>
+    public const string Compass = "Compass";
+
+    /// <summary>Dogtag slot</summary>
+    public const string Dogtag = "Dogtag";
+
+    /// <summary>Special slot 1 (injector case, etc.)</summary>
+    public const string SpecialSlot1 = "SpecialSlot1";
+
+    /// <summary>Special slot 2</summary>
+    public const string SpecialSlot2 = "SpecialSlot2";
+
+    /// <summary>Special slot 3</summary>
+    public const string SpecialSlot3 = "SpecialSlot3";
+
+    // ========================================================================
     // Slot Collections
     // ========================================================================
 
@@ -115,8 +134,21 @@ public static class EquipmentSlots
     };
 
     /// <summary>
+    /// Utility slots (compass, special slots, dogtag).
+    /// </summary>
+    public static readonly string[] UtilitySlots =
+    {
+        Compass,
+        Dogtag,
+        SpecialSlot1,
+        SpecialSlot2,
+        SpecialSlot3
+    };
+
+    /// <summary>
     /// All equipment slots that the mod can manage.
-    /// This is the canonical list used for iteration throughout the codebase.
+    /// This is the CANONICAL list - all other code should reference this array.
+    /// C-03 FIX: Single source of truth for slot definitions.
     /// </summary>
     public static readonly string[] AllSlots =
     {
@@ -136,7 +168,13 @@ public static class EquipmentSlots
         TacticalVest,
         Backpack,
         SecuredContainer,
-        Pockets
+        Pockets,
+        // Utility (C-03 FIX: Added missing slots)
+        Compass,
+        Dogtag,
+        SpecialSlot1,
+        SpecialSlot2,
+        SpecialSlot3
     };
 
     /// <summary>

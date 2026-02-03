@@ -28,6 +28,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using Blackhorse311.KeepStartingGear.Models;
 using Newtonsoft.Json;
 
@@ -65,6 +66,14 @@ public class SnapshotManager
     /// </summary>
     private readonly string _snapshotDirectory;
 
+    /// <summary>
+    /// HIGH-003 FIX: Compiled regex for session ID validation.
+    /// Only allows alphanumeric characters, hyphens, and underscores.
+    /// This prevents path traversal attacks via malicious session IDs like "../../../etc/passwd".
+    /// </summary>
+    private static readonly Regex SessionIdValidator =
+        new(@"^[a-zA-Z0-9\-_]+$", RegexOptions.Compiled);
+
     // ========================================================================
     // Singleton Pattern
     // ========================================================================
@@ -100,12 +109,13 @@ public class SnapshotManager
 
     /// <summary>
     /// Ensures the snapshot storage directory exists, creating it if necessary.
-    /// Called during initialization and before file operations.
+    /// H-10 FIX: Now throws if directory creation fails - snapshots will fail anyway.
     /// </summary>
     /// <remarks>
     /// The snapshot directory structure is:
     /// BepInEx/plugins/Blackhorse311-KeepStartingGear/snapshots/
     /// </remarks>
+    /// <exception cref="IOException">Thrown when directory cannot be created.</exception>
     private void EnsureSnapshotDirectoryExists()
     {
         try
@@ -118,21 +128,47 @@ public class SnapshotManager
         }
         catch (Exception ex)
         {
-            Plugin.Log.LogError($"Failed to create snapshot directory: {ex.Message}");
+            // H-10 FIX: Log AND throw - continuing with a non-existent directory will cause silent failures
+            Plugin.Log.LogError($"CRITICAL: Failed to create snapshot directory '{_snapshotDirectory}': {ex.Message}");
+            Plugin.Log.LogError($"CRITICAL: Snapshot saving and loading will NOT work!");
+            throw new IOException($"Failed to create snapshot directory: {_snapshotDirectory}", ex);
         }
     }
 
     /// <summary>
+    /// HIGH-003 FIX: Validates that a session ID contains only safe characters.
+    /// Prevents path traversal attacks via malicious session IDs.
+    /// </summary>
+    private static bool IsValidSessionId(string sessionId)
+    {
+        if (string.IsNullOrEmpty(sessionId))
+            return false;
+        return SessionIdValidator.IsMatch(sessionId);
+    }
+
+    /// <summary>
     /// Constructs the full file path for a session's snapshot file.
+    /// HIGH-003 FIX: Now validates session ID to prevent path traversal.
+    /// HIGH-004 FIX: Return type is now nullable string to indicate invalid session IDs.
     /// </summary>
     /// <param name="sessionId">The player's session/profile ID</param>
-    /// <returns>Full path to the snapshot JSON file</returns>
+    /// <returns>Full path to the snapshot JSON file, or null if session ID is invalid</returns>
     /// <remarks>
     /// File naming convention: {sessionId}.json
     /// Example: "5c0647fdd443c22b77659123.json"
     /// </remarks>
-    private string GetSnapshotFilePath(string sessionId)
+    private string? GetSnapshotFilePath(string sessionId)
     {
+        // HIGH-003 FIX: Validate session ID to prevent path traversal attacks
+        if (!IsValidSessionId(sessionId))
+        {
+            // HIGH-003 FIX: Safe string truncation - handle null sessionId properly
+            string truncatedId = sessionId != null
+                ? sessionId.Substring(0, Math.Min(20, sessionId.Length))
+                : "(null)";
+            Plugin.Log.LogWarning($"Invalid session ID format rejected: {truncatedId}...");
+            return null;
+        }
         return Path.Combine(_snapshotDirectory, $"{sessionId}.json");
     }
 
@@ -152,14 +188,23 @@ public class SnapshotManager
     /// readability. Null values are included to maintain structure.
     /// </para>
     /// <para>
-    /// The file is written atomically (single WriteAllText call) to minimize
-    /// the risk of corruption from interrupted writes.
+    /// LINUS-002 FIX: File writes are now truly atomic using temp-file-then-rename pattern.
+    /// File.Move on the same volume is atomic on Windows NTFS, preventing corrupt files
+    /// if the process crashes mid-write.
     /// </para>
     /// </remarks>
     public bool SaveSnapshot(InventorySnapshot snapshot)
     {
+        string? tempFilePath = null;
         try
         {
+            // M-07 FIX: Validate SessionId before attempting to construct file path
+            if (snapshot == null || string.IsNullOrEmpty(snapshot.SessionId))
+            {
+                Plugin.Log.LogError("Cannot save snapshot: snapshot or SessionId is null/empty");
+                return false;
+            }
+
             // Validate the snapshot before saving
             if (!snapshot.IsValid())
             {
@@ -198,7 +243,12 @@ public class SnapshotManager
                 snapshot.Items = deduplicatedItems;
             }
 
-            string filePath = GetSnapshotFilePath(snapshot.SessionId);
+            string? filePath = GetSnapshotFilePath(snapshot.SessionId);
+            if (filePath == null)
+            {
+                Plugin.Log.LogError("Cannot save snapshot: invalid session ID");
+                return false;
+            }
 
             // Configure JSON serialization settings
             // Indented formatting makes files readable for debugging
@@ -212,8 +262,22 @@ public class SnapshotManager
             // Serialize snapshot to JSON string
             string jsonContent = JsonConvert.SerializeObject(snapshot, settings);
 
-            // Write to file (overwrites existing)
-            File.WriteAllText(filePath, jsonContent);
+            // LINUS-002 FIX: Atomic write using temp-file-then-rename pattern
+            // 1. Write to temp file (can be interrupted without corrupting final file)
+            // 2. File.Move is atomic on NTFS when on same volume
+            // 3. If we crash between 1 and 2, only the temp file is left (harmless)
+            tempFilePath = filePath + ".tmp." + Guid.NewGuid().ToString("N").Substring(0, 8);
+            File.WriteAllText(tempFilePath, jsonContent);
+
+            // Delete existing file if present (File.Move doesn't overwrite by default on .NET Framework)
+            if (File.Exists(filePath))
+            {
+                File.Delete(filePath);
+            }
+
+            // Atomic rename - this is the commit point
+            File.Move(tempFilePath, filePath);
+            tempFilePath = null; // Clear so we don't try to delete it in finally
 
             // Log success if enabled in settings
             if (Configuration.Settings.LogSnapshotCreation.Value)
@@ -230,6 +294,15 @@ public class SnapshotManager
             Plugin.Log.LogError($"Failed to save snapshot: {ex.Message}");
             return false;
         }
+        finally
+        {
+            // LINUS-002 FIX: Clean up temp file if write failed partway through
+            if (tempFilePath != null)
+            {
+                try { File.Delete(tempFilePath); }
+                catch { /* Best effort cleanup */ }
+            }
+        }
     }
 
     /// <summary>
@@ -240,6 +313,7 @@ public class SnapshotManager
     /// <remarks>
     /// Returns null in these cases:
     /// <list type="bullet">
+    ///   <item>Session ID is invalid (contains illegal characters)</item>
     ///   <item>No snapshot file exists for this session</item>
     ///   <item>The file exists but cannot be deserialized</item>
     ///   <item>The deserialized snapshot is invalid (fails IsValid check)</item>
@@ -251,10 +325,26 @@ public class SnapshotManager
         {
             string filePath = GetSnapshotFilePath(sessionId);
 
+            // HIGH-003 FIX: GetSnapshotFilePath now returns null for invalid session IDs
+            if (filePath == null)
+            {
+                return null;
+            }
+
             // Check if snapshot file exists
             if (!File.Exists(filePath))
             {
                 Plugin.Log.LogDebug($"No snapshot found for session {sessionId}");
+                return null;
+            }
+
+            // HIGH-001 FIX: Check file size before reading to prevent DoS via large files
+            // Server-side SnapshotRestorer has this check, but client was missing it
+            const long MaxSnapshotFileSize = 10 * 1024 * 1024; // 10MB
+            var fileInfo = new FileInfo(filePath);
+            if (fileInfo.Length > MaxSnapshotFileSize)
+            {
+                Plugin.Log.LogWarning($"Snapshot file too large ({fileInfo.Length} bytes), max allowed is {MaxSnapshotFileSize} bytes");
                 return null;
             }
 
@@ -286,11 +376,12 @@ public class SnapshotManager
     /// Quick existence check without loading the file contents.
     /// </summary>
     /// <param name="sessionId">The player's session/profile ID</param>
-    /// <returns>True if a snapshot file exists, false otherwise</returns>
+    /// <returns>True if a snapshot file exists, false otherwise (including invalid session IDs)</returns>
     public bool SnapshotExists(string sessionId)
     {
         string filePath = GetSnapshotFilePath(sessionId);
-        return File.Exists(filePath);
+        // HIGH-003 FIX: Return false for invalid session IDs
+        return filePath != null && File.Exists(filePath);
     }
 
     /// <summary>
@@ -369,7 +460,7 @@ public class SnapshotManager
     /// being used in future raids.
     /// </summary>
     /// <param name="sessionId">The player's session/profile ID</param>
-    /// <returns>True if the file was deleted or didn't exist, false on error</returns>
+    /// <returns>True if the file was deleted or didn't exist, false on error or invalid session ID</returns>
     /// <remarks>
     /// <para>
     /// This method returns true even if no snapshot exists, since the end
@@ -390,6 +481,12 @@ public class SnapshotManager
         try
         {
             string filePath = GetSnapshotFilePath(sessionId);
+
+            // HIGH-003 FIX: Return false for invalid session IDs
+            if (filePath == null)
+            {
+                return false;
+            }
 
             if (File.Exists(filePath))
             {

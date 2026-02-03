@@ -28,6 +28,7 @@
 // ============================================================================
 
 using System;
+using System.Threading;
 using BepInEx.Configuration;
 using Blackhorse311.KeepStartingGear.Configuration;
 using Blackhorse311.KeepStartingGear.Services;
@@ -87,8 +88,23 @@ public class KeybindMonitor : MonoBehaviour
     // ========================================================================
     // Static Fields (Shared Across All Instances)
     // These track raid-wide state for the snapshot system
-    // CON-001: These fields use volatile for visibility guarantees across
-    // potential thread boundaries (Unity main thread + callbacks)
+    //
+    // LINUS-005 THREADING ANALYSIS:
+    // This is a Unity MonoBehaviour. All Unity lifecycle methods (Awake, Update, etc.)
+    // run on the main thread. Therefore, volatile is technically unnecessary for
+    // correctness in normal Unity usage.
+    //
+    // However, we keep volatile as a defensive measure because:
+    // 1. Unity's Invoke() may use internal threading in some versions
+    // 2. BepInEx callbacks could theoretically come from other threads
+    // 3. It documents the "shared state" intent to future maintainers
+    //
+    // THREADING POLICY:
+    // - volatile: Used for simple reads/writes. Defensive for visibility.
+    // - Interlocked: Used for _manualSnapshotCount which needs atomic increment.
+    // - float: Uses volatile despite 32-bit non-atomicity because timing tolerates races.
+    //
+    // If true thread safety is ever needed, replace with proper synchronization.
     // ========================================================================
 
     /// <summary>
@@ -112,20 +128,25 @@ public class KeybindMonitor : MonoBehaviour
     /// <summary>
     /// Tracks how many manual snapshots have been taken this raid.
     /// In AutoPlusManual mode, limited by MaxManualSnapshots setting.
+    /// MEDIUM-001 FIX: Uses Interlocked for atomic increment.
+    /// Access via Interlocked.Increment/Volatile.Read only.
     /// </summary>
-    private static volatile int _manualSnapshotCount = 0;
+    private static int _manualSnapshotCount = 0;
 
     /// <summary>
     /// Timestamp when the last manual snapshot was taken.
     /// Used for enforcing configurable cooldown between manual snapshots.
+    /// LINUS-005 NOTE: volatile float is NOT fully atomic on 32-bit, but timing
+    /// values tolerate minor races (worst case: cooldown check off by a frame).
     /// </summary>
     private static volatile float _lastManualSnapshotTime = 0f;
 
     /// <summary>
     /// Number of items in the current snapshot.
     /// Used for showing difference when overwriting auto-snapshot.
+    /// Uses Volatile.Read/Write for consistency with other int fields.
     /// </summary>
-    private static volatile int _currentSnapshotItemCount = 0;
+    private static int _currentSnapshotItemCount = 0;
 
     /// <summary>
     /// The snapshot mode that was active when the raid started.
@@ -311,7 +332,8 @@ public class KeybindMonitor : MonoBehaviour
         _inRaid = false;
         _currentRaidSnapshotMap = null;
         _autoSnapshotTaken = false;
-        _manualSnapshotCount = 0;
+        // MEDIUM-001 FIX: Use Volatile.Write for thread-safe reset
+        Volatile.Write(ref _manualSnapshotCount, 0);
         _lastManualSnapshotTime = 0f;
         _currentSnapshotItemCount = 0;
         Plugin.Log.LogDebug("Raid state reset - all snapshot tracking cleared");
@@ -432,7 +454,9 @@ public class KeybindMonitor : MonoBehaviour
             // AutoPlusManual Mode: Check if manual snapshot already taken
             // ================================================================
             int maxSnapshots = Settings.MaxManualSnapshots.Value;
-            if (mode == SnapshotMode.AutoPlusManual && inRaid && _manualSnapshotCount >= maxSnapshots)
+            // MEDIUM-001 FIX: Use Volatile.Read for thread-safe read
+            int currentCount = Volatile.Read(ref _manualSnapshotCount);
+            if (mode == SnapshotMode.AutoPlusManual && inRaid && currentCount >= maxSnapshots)
             {
                 Plugin.Log.LogDebug($"Manual snapshot limit reached - {_manualSnapshotCount}/{maxSnapshots} taken");
                 NotificationOverlay.ShowWarning($"Manual Snapshot Limit!\n{maxSnapshots} update{(maxSnapshots > 1 ? "s" : "")} allowed per raid");
@@ -458,7 +482,8 @@ public class KeybindMonitor : MonoBehaviour
             // ================================================================
             // ManualOnly Mode: Check snapshot limit using MaxManualSnapshots setting
             // ================================================================
-            if (mode == SnapshotMode.ManualOnly && inRaid && _manualSnapshotCount >= maxSnapshots)
+            // MEDIUM-001 FIX: Reuse currentCount from earlier Volatile.Read
+            if (mode == SnapshotMode.ManualOnly && inRaid && currentCount >= maxSnapshots)
             {
                 Plugin.Log.LogDebug($"Manual snapshot limit reached - {_manualSnapshotCount}/{maxSnapshots} taken");
                 NotificationOverlay.ShowWarning($"Snapshot Limit Reached!\n{maxSnapshots} snapshot{(maxSnapshots > 1 ? "s" : "")} per raid");
@@ -490,7 +515,8 @@ public class KeybindMonitor : MonoBehaviour
                     if (inRaid)
                     {
                         _currentRaidSnapshotMap = location;
-                        _manualSnapshotCount++;
+                        // MEDIUM-001 FIX: Use Interlocked for atomic increment
+                        Interlocked.Increment(ref _manualSnapshotCount);
                         _lastManualSnapshotTime = Time.time;
 
                         // Calculate difference from auto-snapshot

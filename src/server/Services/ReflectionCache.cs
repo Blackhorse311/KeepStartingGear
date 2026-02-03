@@ -123,9 +123,10 @@ public static class ReflectionCache
                 return true;
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Ignore reflection exceptions
+            // H-01 FIX: Log reflection exceptions instead of silently swallowing
+            Plugin.Log?.LogDebug($"[ReflectionCache] TryGetPropertyValue failed for {obj.GetType().Name}.{propertyName}: {ex.Message}");
         }
 
         return false;
@@ -194,9 +195,10 @@ public static class ReflectionCache
                 return true;
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Ignore reflection exceptions
+            // H-01 FIX: Log reflection exceptions instead of silently swallowing
+            Plugin.Log?.LogDebug($"[ReflectionCache] TryGetFieldValue failed for {obj.GetType().Name}.{fieldName}: {ex.Message}");
         }
 
         return false;
@@ -224,9 +226,10 @@ public static class ReflectionCache
                 return true;
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Ignore reflection exceptions
+            // H-01 FIX: Log reflection exceptions instead of silently swallowing
+            Plugin.Log?.LogDebug($"[ReflectionCache] TryGetFieldValue (with flags) failed for {obj.GetType().Name}.{fieldName}: {ex.Message}");
         }
 
         return false;
@@ -277,10 +280,11 @@ public static class ReflectionCache
 
     /// <summary>
     /// Gets a property or field value, returning null if not found.
+    /// H-01 FIX: Now logs reflection access errors instead of silently swallowing them.
     /// </summary>
     /// <param name="obj">The object to get the member from</param>
     /// <param name="memberName">The name of the property or field</param>
-    /// <returns>The value, or null if not found</returns>
+    /// <returns>The value, or null if not found or on error</returns>
     public static object GetMemberValue(object obj, string memberName)
     {
         if (obj == null)
@@ -292,16 +296,30 @@ public static class ReflectionCache
         var prop = GetProperty(type, memberName);
         if (prop != null)
         {
-            try { return prop.GetValue(obj); }
-            catch { /* Ignore */ }
+            try
+            {
+                return prop.GetValue(obj);
+            }
+            catch (Exception ex)
+            {
+                // H-01 FIX: Log instead of silently ignoring
+                Plugin.Log?.LogDebug($"[ReflectionCache] Property access failed for {type.Name}.{memberName}: {ex.Message}");
+            }
         }
 
         // Fall back to field
         var field = GetField(type, memberName);
         if (field != null)
         {
-            try { return field.GetValue(obj); }
-            catch { /* Ignore */ }
+            try
+            {
+                return field.GetValue(obj);
+            }
+            catch (Exception ex)
+            {
+                // H-01 FIX: Log instead of silently ignoring
+                Plugin.Log?.LogDebug($"[ReflectionCache] Field access failed for {type.Name}.{memberName}: {ex.Message}");
+            }
         }
 
         return null;

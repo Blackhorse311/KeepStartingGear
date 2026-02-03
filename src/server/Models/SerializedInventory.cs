@@ -110,16 +110,44 @@ public class SerializedItem
     public ItemLocation? Location { get; set; }
 
     /// <summary>
+    /// Backing field for LocationIndex property.
+    /// MEDIUM-005 FIX: Use backing field to enable validation in setter.
+    /// </summary>
+    [JsonIgnore]
+    private int? _locationIndex;
+
+    /// <summary>
     /// Numeric position index for cartridges in magazines.
     /// In SPT profiles, cartridges use a simple integer location (0, 1, 2, etc.)
     /// instead of the grid-style location object used by container items.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Access this property to get cartridge index. For serialization,
     /// use the LocationData property which handles polymorphic output.
+    /// </para>
+    /// <para>
+    /// MEDIUM-005 FIX: Added validation to prevent negative values being set directly.
+    /// Use <see cref="SetCartridgeIndex"/> for validated assignment with exception throwing.
+    /// </para>
     /// </remarks>
     [JsonIgnore]
-    public int? LocationIndex { get; set; }
+    public int? LocationIndex
+    {
+        get => _locationIndex;
+        set
+        {
+            // MEDIUM-005 FIX: Validate that LocationIndex is not negative when set directly
+            if (value.HasValue && value.Value < 0)
+            {
+                // Silently clamp to null instead of throwing to maintain backwards compatibility
+                // during deserialization. For explicit setting, use SetCartridgeIndex() which throws.
+                _locationIndex = null;
+                return;
+            }
+            _locationIndex = value;
+        }
+    }
 
     /// <summary>
     /// Polymorphic location data for JSON serialization.

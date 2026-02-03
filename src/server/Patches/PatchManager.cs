@@ -25,6 +25,7 @@
 // ============================================================================
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using SPT.Reflection.Patching;
@@ -49,12 +50,28 @@ namespace Blackhorse311.KeepStartingGear.Patches;
 public static class PatchManager
 {
     // ========================================================================
+    // Critical Patches (H-03 FIX)
+    // ========================================================================
+
+    /// <summary>
+    /// List of patch names that are CRITICAL for mod functionality.
+    /// If any of these fail to load, the mod should warn the user loudly.
+    /// </summary>
+    private static readonly HashSet<string> CriticalPatches = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "RaidEndPatch",      // Required for gear restoration on death
+        "GameStartPatch",    // Required for raid start detection
+        "RaidExitPatch"      // Required for extraction handling
+    };
+
+    // ========================================================================
     // Public API
     // ========================================================================
 
     /// <summary>
     /// Discovers and enables all ModulePatch classes in the assembly.
     /// Called once during plugin initialization.
+    /// H-03 FIX: Now tracks critical patch failures and warns users.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -66,8 +83,8 @@ public static class PatchManager
     ///   <item>Logged for debugging purposes</item>
     /// </list>
     /// <para>
-    /// Errors in individual patches are caught and logged, but don't prevent
-    /// other patches from being enabled.
+    /// Errors in individual patches are caught and logged. Critical patch
+    /// failures are logged at ERROR level with user-facing warnings.
     /// </para>
     /// </remarks>
     public static void EnablePatches()
@@ -75,6 +92,8 @@ public static class PatchManager
         Plugin.Log.LogDebug("Enabling patches...");
 
         int patchCount = 0;
+        var failedCriticalPatches = new List<string>();
+        var failedPatches = new List<string>();
 
         // Find and enable each patch type
         foreach (var patchType in GetAllPatches())
@@ -92,12 +111,40 @@ public static class PatchManager
             }
             catch (Exception ex)
             {
-                // Log error but continue with other patches
-                Plugin.Log.LogError($"Failed to enable patch {patchType.Name}: {ex.Message}");
+                // H-03 FIX: Track critical vs non-critical patch failures
+                bool isCritical = CriticalPatches.Contains(patchType.Name);
+
+                if (isCritical)
+                {
+                    failedCriticalPatches.Add(patchType.Name);
+                    Plugin.Log.LogError($"CRITICAL: Failed to enable patch {patchType.Name}: {ex.Message}");
+                    Plugin.Log.LogError($"CRITICAL: Stack trace: {ex.StackTrace}");
+                }
+                else
+                {
+                    failedPatches.Add(patchType.Name);
+                    Plugin.Log.LogError($"Failed to enable patch {patchType.Name}: {ex.Message}");
+                }
             }
         }
 
-        Plugin.Log.LogDebug($"Enabled {patchCount} patches");
+        // H-03 FIX: Report results with appropriate severity
+        if (failedCriticalPatches.Count > 0)
+        {
+            Plugin.Log.LogError($"========================================");
+            Plugin.Log.LogError($"CRITICAL: {failedCriticalPatches.Count} CRITICAL PATCH(ES) FAILED TO LOAD!");
+            Plugin.Log.LogError($"Failed patches: {string.Join(", ", failedCriticalPatches)}");
+            Plugin.Log.LogError($"GEAR RESTORATION MAY NOT WORK!");
+            Plugin.Log.LogError($"Please report this issue with your BepInEx/LogOutput.log file.");
+            Plugin.Log.LogError($"========================================");
+        }
+
+        if (failedPatches.Count > 0)
+        {
+            Plugin.Log.LogWarning($"Warning: {failedPatches.Count} non-critical patch(es) failed: {string.Join(", ", failedPatches)}");
+        }
+
+        Plugin.Log.LogDebug($"Enabled {patchCount} patches ({failedCriticalPatches.Count} critical failures, {failedPatches.Count} non-critical failures)");
     }
 
     // ========================================================================

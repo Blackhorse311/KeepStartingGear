@@ -32,6 +32,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Collections.Generic;
+using Blackhorse311.KeepStartingGear.Constants;
 using Blackhorse311.KeepStartingGear.Models;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -317,7 +318,7 @@ public class ProfileService
             foreach (var item in itemsArray)
             {
                 var tpl = item["_tpl"]?.ToString();
-                if (tpl == "55d7217a4bdc2d86028b456d") // Equipment container template
+                if (tpl == TemplateIds.Equipment) // M-01 FIX: use constant
                 {
                     equipmentId = item["_id"]?.ToString();
                     equipmentToken = item;
@@ -394,9 +395,9 @@ public class ProfileService
             int restoredCount = 0;
 
             // Find the Equipment container ID from the snapshot
-            // We need this to remap parent references
+            // We need this to remap parent references (M-01 FIX: use constant)
             string snapshotEquipmentId = snapshot.Items
-                .FirstOrDefault(i => i.Tpl == "55d7217a4bdc2d86028b456d")?.Id;
+                .FirstOrDefault(i => i.Tpl == TemplateIds.Equipment)?.Id;
 
             if (string.IsNullOrEmpty(snapshotEquipmentId))
             {
@@ -409,7 +410,8 @@ public class ProfileService
             foreach (var snapshotItem in snapshot.Items)
             {
                 // Skip the Equipment container itself (we keep the profile's original)
-                if (snapshotItem.Tpl == "55d7217a4bdc2d86028b456d")
+                // M-01 FIX: use constant
+                if (snapshotItem.Tpl == TemplateIds.Equipment)
                 {
                     continue;
                 }

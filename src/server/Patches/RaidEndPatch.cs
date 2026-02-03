@@ -96,8 +96,9 @@ public class RaidEndPatch : ModulePatch
     /// <summary>
     /// Tracks whether we've already processed the raid end for this session.
     /// Prevents duplicate processing from bot extractions triggering false positives.
+    /// LOW-002 FIX: Added volatile for thread visibility consistency with other static fields.
     /// </summary>
-    private static bool _raidEndProcessed = false;
+    private static volatile bool _raidEndProcessed = false;
 
     /// <summary>
     /// Resets the raid end tracking flag. Called when a new raid starts.
@@ -171,7 +172,11 @@ public class RaidEndPatch : ModulePatch
                     Plugin.Log.LogDebug($"RaidEndPatch: Game instance status: {status}");
                 }
             }
-            catch { /* Ignore reflection errors */ }
+            catch (Exception ex)
+            {
+                // LOW-003 FIX: Changed from Debug to Warning - reflection errors should be visible for diagnostics
+                Plugin.Log.LogWarning($"RaidEndPatch: Could not get game instance status via reflection: {ex.Message}");
+            }
 
             // Check 2: Verify this is actually the main player's game ending
             // Get GameWorld to check if main player is actually ending
