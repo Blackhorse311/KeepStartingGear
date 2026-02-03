@@ -30,6 +30,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Blackhorse311.KeepStartingGear.Configuration;
+using Blackhorse311.KeepStartingGear.Constants;
 using Blackhorse311.KeepStartingGear.Models;
 using Comfort.Common;
 using EFT;
@@ -209,41 +210,36 @@ public class InventoryService
     // Item Capture - Main Processing
     // ========================================================================
 
+    // ========================================================================
+    // C-06 FIX: Constants for top-level equipment slots
+    // Extracted to reduce duplication and improve maintainability
+    // ========================================================================
+
+    /// <summary>
+    /// Set of top-level equipment slot names that are filtered by user configuration.
+    /// All other slots (mod_*, patron_*, Soft_armor_*, etc.) are nested and captured
+    /// automatically with their parent items.
+    /// </summary>
+    private static readonly HashSet<string> TopLevelEquipmentSlots = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "FirstPrimaryWeapon", "SecondPrimaryWeapon", "Holster", "Scabbard",
+        "Headwear", "Earpiece", "FaceCover", "Eyewear", "ArmBand",
+        "TacticalVest", "ArmorVest", "Pockets", "Backpack", "SecuredContainer",
+        "Compass", "SpecialSlot1", "SpecialSlot2", "SpecialSlot3", "Dogtag"
+    };
+
     /// <summary>
     /// Captures all items from the player's inventory by iterating through equipment slots.
-    /// This method handles the top-level iteration and delegates to recursive methods.
+    /// C-06 FIX: Refactored from 664-line method to use extracted helper methods.
     /// </summary>
     /// <param name="inventory">The player's Inventory object</param>
     /// <param name="allItems">List to populate with captured items</param>
     /// <param name="slotsToSave">List of slot names that should be included</param>
     /// <param name="emptySlots">List to populate with slot names that were enabled but empty</param>
-    /// <remarks>
-    /// <para>
-    /// This method uses reflection to access the Equipment property and its slots
-    /// because the exact structure may vary between EFT versions. It tries multiple
-    /// approaches in order of preference:
-    /// </para>
-    /// <list type="number">
-    ///   <item>AllSlots property - Contains all equipment slots (weapons, armor, containers)</item>
-    ///   <item>GetAllSlots() method - Alternative method-based access</item>
-    ///   <item>Slots property - Fallback for older EFT versions</item>
-    ///   <item>ContainerSlots property - Last resort, may miss some equipment</item>
-    /// </list>
-    /// <para>
-    /// The Equipment container itself is also captured first, as its ID is needed
-    /// for proper parent-child relationships in the profile JSON.
-    /// </para>
-    /// <para>
-    /// <b>Empty Slot Tracking:</b> When a slot is enabled in config but has no item,
-    /// it's added to the emptySlots list. This ensures the server knows to clear
-    /// items from that slot during restoration (preventing FIR items from being kept).
-    /// </para>
-    /// </remarks>
     private void CaptureAllItems(Inventory inventory, List<SerializedItem> allItems, List<string> slotsToSave, List<string> emptySlots)
     {
         try
         {
-            // Access the Equipment property which contains all character equipment slots
             var equipment = inventory.Equipment;
             if (equipment == null)
             {
@@ -251,658 +247,828 @@ public class InventoryService
                 return;
             }
 
-            // ================================================================
-            // Capture Equipment Container
-            // The Equipment container itself must be captured first because
-            // the server needs its ID for proper inventory structure
-            // ================================================================
-            var equipmentItem = equipment as Item;
-            if (equipmentItem != null)
-            {
-                var equipmentSerialized = ConvertToSerializedItem(equipmentItem);
-                if (equipmentSerialized != null)
-                {
-                    allItems.Add(equipmentSerialized);
-                    Plugin.Log.LogDebug($"Captured Equipment container: ID={equipmentSerialized.Id}, Tpl={equipmentSerialized.Tpl}");
-                }
-            }
+            // Capture Equipment container first (server needs its ID)
+            CaptureEquipmentContainer(equipment, allItems);
 
             Plugin.Log.LogDebug("Starting equipment slot enumeration...");
             Plugin.Log.LogDebug($"Equipment type: {equipment.GetType().FullName}");
 
-            // ================================================================
-            // Debug Logging - Equipment Structure
-            // This helps diagnose issues when the slot access methods change
-            // between EFT versions - ONLY logged when verbose capture is enabled
-            // ================================================================
-            if (Settings.VerboseCaptureLogging?.Value == true)
-            {
-                Plugin.Log.LogDebug("=== Equipment Properties ===");
-                foreach (var prop in equipment.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))
-                {
-                    Plugin.Log.LogDebug($"  Property: {prop.Name} : {prop.PropertyType.Name}");
-                }
+            // Log equipment structure for debugging (only in verbose mode)
+            LogEquipmentStructure(equipment);
 
-                Plugin.Log.LogDebug("=== Equipment Methods (slot-related) ===");
-                foreach (var method in equipment.GetType().GetMethods(BindingFlags.Public | BindingFlags.Instance))
-                {
-                    if (method.Name.ToLower().Contains("slot") || method.Name.ToLower().Contains("grid") || method.Name.ToLower().Contains("item"))
-                    {
-                        Plugin.Log.LogDebug($"  Method: {method.Name}({string.Join(", ", method.GetParameters().Select(p => p.ParameterType.Name + " " + p.Name))})");
-                    }
-                }
-            }
-
-            // ================================================================
-            // Slot Access - Try Multiple Methods
-            // Different EFT versions expose slots through different properties
-            // ================================================================
-            IEnumerable<object> slots = null;
-
-            // Method 1: Try AllSlots property (preferred - contains ALL equipment slots)
-            var allSlotsProperty = equipment.GetType().GetProperty("AllSlots");
-            if (allSlotsProperty != null)
-            {
-                Plugin.Log.LogDebug("Found AllSlots property, using it...");
-                slots = allSlotsProperty.GetValue(equipment) as IEnumerable<object>;
-                if (slots != null)
-                {
-                    var slotList = slots.ToList();
-                    Plugin.Log.LogDebug($"AllSlots property returned {slotList.Count} slots");
-                    slots = slotList;
-                }
-            }
-
-            // Method 2: Try GetAllSlots() method as fallback
+            // Get equipment slots using multiple fallback methods
+            var slots = GetEquipmentSlots(equipment);
             if (slots == null)
             {
-                var getAllSlotsMethod = equipment.GetType().GetMethod("GetAllSlots");
-                if (getAllSlotsMethod != null)
-                {
-                    Plugin.Log.LogDebug("Trying GetAllSlots() method...");
-                    slots = getAllSlotsMethod.Invoke(equipment, null) as IEnumerable<object>;
-                    if (slots != null)
-                    {
-                        var slotList = slots.ToList();
-                        Plugin.Log.LogDebug($"GetAllSlots() returned {slotList.Count} slots");
-                        slots = slotList;
-                    }
-                }
+                LogSlotAccessFailure(equipment);
+                return;
             }
 
-            // Method 3: Try Slots property as fallback
-            if (slots == null)
-            {
-                Plugin.Log.LogDebug("AllSlots not found, trying Slots property...");
-                var slotsProperty = equipment.GetType().GetProperty("Slots");
-                if (slotsProperty != null)
-                {
-                    Plugin.Log.LogDebug("Found Slots property, using it...");
-                    slots = slotsProperty.GetValue(equipment) as IEnumerable<object>;
-                    if (slots != null)
-                    {
-                        var slotList = slots.ToList();
-                        Plugin.Log.LogDebug($"Slots property returned {slotList.Count} slots");
-                        slots = slotList;
-                    }
-                }
-            }
+            // First pass: Collect all slot items
+            var slotItems = CollectSlotItems(slots);
+            Plugin.Log.LogDebug($"Found {slotItems.Count} items in slots");
 
-            // Method 4: Last resort - try ContainerSlots (may miss some equipment)
-            if (slots == null)
-            {
-                Plugin.Log.LogWarning("Falling back to ContainerSlots (may miss some equipment)...");
-                var containerSlotsProperty = equipment.GetType().GetProperty("ContainerSlots");
-                if (containerSlotsProperty != null)
-                {
-                    slots = containerSlotsProperty.GetValue(equipment) as IEnumerable<object>;
-                    if (slots != null)
-                    {
-                        var slotList = slots.ToList();
-                        Plugin.Log.LogWarning($"ContainerSlots returned {slotList.Count} slots");
-                        slots = slotList;
-                    }
-                }
-            }
+            // Track captured item IDs for parent-child relationships
+            var capturedItemIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            // ================================================================
-            // Process Each Slot
-            // ================================================================
-            if (slots != null)
-            {
-                // Define the set of TOP-LEVEL equipment slot names
-                // These are the only slots that should be filtered by config
-                // All other slots (mod_*, patron_*, Soft_armor_*, etc.) are nested and should
-                // be captured automatically with their parent items
-                var topLevelEquipmentSlots = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-                {
-                    "FirstPrimaryWeapon", "SecondPrimaryWeapon", "Holster", "Scabbard",
-                    "Headwear", "Earpiece", "FaceCover", "Eyewear", "ArmBand",
-                    "TacticalVest", "ArmorVest", "Pockets", "Backpack", "SecuredContainer",
-                    "Compass", "SpecialSlot1", "SpecialSlot2", "SpecialSlot3", "Dogtag"
-                };
+            // Second pass: Capture top-level equipment slots (filtered by config)
+            var slotsWithItems = CaptureTopLevelSlotItems(slotItems, slotsToSave, allItems, capturedItemIds);
 
-                // First pass: Collect all items and their IDs
-                // This lets us track parent-child relationships
-                var capturedItemIds = new HashSet<string>();
-                var slotItems = new List<(string SlotName, Item Item)>();
+            // Track empty slots for proper restoration
+            TrackEmptySlots(slotsToSave, slotsWithItems, emptySlots);
 
-                if (Settings.VerboseCaptureLogging?.Value == true)
-                    Plugin.Log.LogDebug("First pass: Collecting slot items...");
-                foreach (var slot in slots)
-                {
-                    // Use cached reflection lookups for better performance
-                    var slotType = slot.GetType();
-                    var slotNameProp = ReflectionCache.GetProperty(slotType, "Name");
-                    var slotName = slotNameProp?.GetValue(slot)?.ToString() ?? "Unknown";
+            // Third pass: Capture nested/mod slots (if parent was captured)
+            CaptureNestedSlotItems(slotItems, allItems, capturedItemIds);
+            Plugin.Log.LogDebug($"Items captured from slots: {capturedItemIds.Count}");
 
-                    var containedItemProp = ReflectionCache.GetProperty(slotType, "ContainedItem");
-                    var containedItem = containedItemProp?.GetValue(slot) as Item;
+            // Fourth pass: Capture grid contents (backpacks, rigs, magazines, ammo)
+            var gridItemsFound = CaptureGridContents(slotItems, allItems, capturedItemIds);
 
-                    if (containedItem != null)
-                    {
-                        slotItems.Add((slotName, containedItem));
-                    }
-                }
-                Plugin.Log.LogDebug($"Found {slotItems.Count} items in slots");
-
-                // Second pass: Process top-level equipment slots first
-                // These are filtered by the config
-                // Also track which slots have items for empty slot detection
-                var slotsWithItems = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-                if (Settings.VerboseCaptureLogging?.Value == true)
-                    Plugin.Log.LogDebug("Second pass: Processing top-level equipment slots...");
-                foreach (var (slotName, item) in slotItems)
-                {
-                    // Only process top-level equipment slots here
-                    if (!topLevelEquipmentSlots.Contains(slotName))
-                        continue;
-
-                    // Track that this slot has an item
-                    slotsWithItems.Add(slotName);
-
-                    if (Settings.VerboseCaptureLogging?.Value == true)
-                        Plugin.Log.LogDebug($"[SLOT DEBUG] Found item in slot '{slotName}': {item.Template?.NameLocalizationKey ?? item.TemplateId}");
-
-                    // Check if this slot is enabled in configuration
-                    bool slotEnabled = slotsToSave.Any(s => s.Equals(slotName, StringComparison.OrdinalIgnoreCase));
-
-                    if (slotEnabled)
-                    {
-                        if (Settings.VerboseCaptureLogging?.Value == true)
-                            Plugin.Log.LogDebug($"[SLOT DEBUG]   -> Capturing slot '{slotName}'");
-                        var serializedItem = ConvertToSerializedItem(item);
-                        if (serializedItem != null)
-                        {
-                            allItems.Add(serializedItem);
-                            capturedItemIds.Add(item.Id);
-                            if (Settings.VerboseCaptureLogging?.Value == true)
-                                Plugin.Log.LogDebug($"[CAPTURE] Added top-level item: {serializedItem.Tpl} (ID: {serializedItem.Id})");
-                        }
-                    }
-                    else
-                    {
-                        if (Settings.VerboseCaptureLogging?.Value == true)
-                            Plugin.Log.LogDebug($"[SLOT DEBUG]   -> SKIPPING slot '{slotName}' (not in slotsToSave list!)");
-                    }
-                }
-
-                // Track empty slots: slots that are enabled in config but have no item
-                // This is critical for proper restoration - items looted into empty slots
-                // during raid should be removed on death
-                foreach (var enabledSlot in slotsToSave)
-                {
-                    // Only check top-level equipment slots
-                    if (!topLevelEquipmentSlots.Contains(enabledSlot))
-                        continue;
-
-                    // If this enabled slot doesn't have an item, it's empty
-                    if (!slotsWithItems.Contains(enabledSlot))
-                    {
-                        emptySlots.Add(enabledSlot);
-                        if (Settings.VerboseCaptureLogging?.Value == true)
-                            Plugin.Log.LogDebug($"[EMPTY SLOT] Slot '{enabledSlot}' is enabled but empty - will be cleared on restore");
-                    }
-                }
-
-                if (emptySlots.Count > 0 && Settings.VerboseCaptureLogging?.Value == true)
-                {
-                    Plugin.Log.LogDebug($"[EMPTY SLOTS] Tracked {emptySlots.Count} empty slots: {string.Join(", ", emptySlots)}");
-                }
-
-                // Third pass: Process nested/mod slots
-                // These should be captured if their parent was captured
-                if (Settings.VerboseCaptureLogging?.Value == true)
-                    Plugin.Log.LogDebug("Third pass: Processing nested slots (mods, armor inserts, etc.)...");
-                bool foundNewItems = true;
-                int passCount = 0;
-                while (foundNewItems && passCount < 10) // Limit iterations to prevent infinite loops
-                {
-                    foundNewItems = false;
-                    passCount++;
-
-                    foreach (var (slotName, item) in slotItems)
-                    {
-                        // Skip top-level slots (already processed)
-                        if (topLevelEquipmentSlots.Contains(slotName))
-                            continue;
-
-                        // Skip if already captured
-                        if (capturedItemIds.Contains(item.Id))
-                            continue;
-
-                        // Check if parent was captured
-                        var parentId = item.Parent?.Container?.ParentItem?.Id;
-                        if (parentId != null && capturedItemIds.Contains(parentId))
-                        {
-                            var serializedItem = ConvertToSerializedItem(item);
-                            if (serializedItem != null)
-                            {
-                                allItems.Add(serializedItem);
-                                capturedItemIds.Add(item.Id);
-                                foundNewItems = true;
-                                if (Settings.VerboseCaptureLogging?.Value == true)
-                                    Plugin.Log.LogDebug($"[CAPTURE] Added nested item from slot '{slotName}': {serializedItem.Tpl} (ID: {serializedItem.Id}, Parent: {parentId})");
-                            }
-                        }
-                    }
-                }
-                if (Settings.VerboseCaptureLogging?.Value == true)
-                    Plugin.Log.LogDebug($"Nested item passes completed: {passCount}");
-                Plugin.Log.LogDebug($"Items captured from slots: {capturedItemIds.Count}");
-
-                // ================================================================
-                // Fourth pass: Capture GRID contents (backpack items, rig items, pocket items, mag ammo)
-                // Grid items are NOT in AllSlots - we need to check each captured item's Grids property
-                // ================================================================
-                if (Settings.VerboseCaptureLogging?.Value == true)
-                    Plugin.Log.LogDebug("Fourth pass: Capturing grid contents from containers...");
-
-                // Build a list of items we need to check for grids
-                // We'll keep iterating until no new items are found
-                var itemsToCheck = new List<Item>();
-
-                // First, collect all the Item objects we've captured so far
-                // We need to find them from the slot items list
-                foreach (var (slotName, item) in slotItems)
-                {
-                    if (capturedItemIds.Contains(item.Id))
-                    {
-                        itemsToCheck.Add(item);
-                    }
-                }
-
-                if (Settings.VerboseCaptureLogging?.Value == true)
-                    Plugin.Log.LogDebug($"Checking {itemsToCheck.Count} captured items for grid contents...");
-
-                int gridItemsFound = 0;
-                bool foundMore = true;
-                int gridPass = 0;
-                bool verbose = Settings.VerboseCaptureLogging?.Value == true;
-
-                while (foundMore && gridPass < 10)
-                {
-                    foundMore = false;
-                    gridPass++;
-                    var newItemsToCheck = new List<Item>();
-
-                    foreach (var containerItem in itemsToCheck)
-                    {
-                        if (containerItem == null) continue;
-
-                        var itemType = containerItem.GetType();
-
-                        // Debug: Log every item we're checking on first pass
-                        if (gridPass == 1 && verbose)
-                        {
-                            Plugin.Log.LogDebug($"[GRID DEBUG] Checking item: {containerItem.TemplateId} Type: {itemType.Name}");
-                        }
-
-                        // Check for Grids field (containers like backpacks, rigs, pockets)
-                        // Note: In EFT, Grids is a PUBLIC FIELD, not a property!
-                        var gridsField = ReflectionCache.GetField(itemType, "Grids", BindingFlags.Public | BindingFlags.Instance);
-                        if (gridsField != null)
-                        {
-                            if (gridPass == 1 && verbose) Plugin.Log.LogDebug($"[GRID DEBUG]   Has Grids field");
-
-                            var grids = gridsField.GetValue(containerItem) as System.Collections.IEnumerable;
-                            if (grids != null)
-                            {
-                                int gridCount = 0;
-                                foreach (var grid in grids)
-                                {
-                                    gridCount++;
-                                    if (grid == null) continue;
-
-                                    // Get grid ID for logging (use cached reflection)
-                                    var gridType = grid.GetType();
-                                    var gridIdProp = ReflectionCache.GetProperty(gridType, "ID");
-                                    var gridId = gridIdProp?.GetValue(grid)?.ToString() ?? "unknown";
-
-                                    if (gridPass == 1 && verbose) Plugin.Log.LogDebug($"[GRID DEBUG]   Grid {gridCount}: ID={gridId}, Type={gridType.Name}");
-
-                                    // Try ItemCollection first (contains KeyValuePair<Item, LocationInGrid>)
-                                    var itemCollectionProp = ReflectionCache.GetProperty(gridType, "ItemCollection");
-                                    var containedItemsProp = ReflectionCache.GetProperty(gridType, "ContainedItems");
-                                    var collectionProp = itemCollectionProp ?? containedItemsProp;
-
-                                    if (collectionProp != null)
-                                    {
-                                        var collection = collectionProp.GetValue(grid) as System.Collections.IEnumerable;
-                                        if (collection != null)
-                                        {
-                                            int itemCount = 0;
-                                            foreach (var kvp in collection)
-                                            {
-                                                itemCount++;
-                                                // kvp is KeyValuePair<Item, LocationInGrid>
-                                                var kvpType = kvp.GetType();
-                                                var keyProp = ReflectionCache.GetProperty(kvpType, "Key");
-                                                var valueProp = ReflectionCache.GetProperty(kvpType, "Value");
-
-                                                if (keyProp != null && valueProp != null)
-                                                {
-                                                    var childItem = keyProp.GetValue(kvp) as Item;
-                                                    var locationInGrid = valueProp.GetValue(kvp);
-
-                                                    if (childItem != null && !capturedItemIds.Contains(childItem.Id))
-                                                    {
-                                                        var serializedItem = ConvertToSerializedItem(childItem);
-                                                        if (serializedItem != null)
-                                                        {
-                                                            // Extract location from LocationInGrid (use cached reflection)
-                                                            if (locationInGrid != null)
-                                                            {
-                                                                var locType = locationInGrid.GetType();
-
-                                                                // Try to get x, y, r values - could be properties or fields
-                                                                // Use ReflectionCache.GetMemberValue for cleaner access
-                                                                var xVal = ReflectionCache.GetMemberValue(locationInGrid, "x");
-                                                                var yVal = ReflectionCache.GetMemberValue(locationInGrid, "y");
-                                                                var rVal = ReflectionCache.GetMemberValue(locationInGrid, "r");
-
-                                                                if (xVal != null && yVal != null)
-                                                                {
-                                                                    serializedItem.Location = new ItemLocation
-                                                                    {
-                                                                        X = Convert.ToInt32(xVal),
-                                                                        Y = Convert.ToInt32(yVal),
-                                                                        R = rVal != null ? Convert.ToInt32(rVal) : 0,
-                                                                        IsSearched = true
-                                                                    };
-                                                                    if (verbose)
-                                                                        Plugin.Log.LogDebug($"[LOCATION] Captured from ItemCollection: {childItem.TemplateId} at X={serializedItem.Location.X}, Y={serializedItem.Location.Y}, R={serializedItem.Location.R}");
-                                                                }
-                                                            }
-
-                                                            allItems.Add(serializedItem);
-                                                            capturedItemIds.Add(childItem.Id);
-                                                            newItemsToCheck.Add(childItem);
-                                                            gridItemsFound++;
-                                                            foundMore = true;
-
-                                                            if (verbose)
-                                                                Plugin.Log.LogDebug($"[CAPTURE] Added grid item: {serializedItem.Tpl} (ID: {serializedItem.Id}, Parent: {containerItem.Id}, Grid: {gridId})");
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                            if (gridPass == 1 && verbose) Plugin.Log.LogDebug($"[GRID DEBUG]     Grid has {itemCount} items via ItemCollection");
-                                        }
-                                    }
-                                    // Fallback to Items property if ItemCollection not available
-                                    else
-                                    {
-                                        var gridItemsProperty = grid.GetType().GetProperty("Items");
-                                        if (gridItemsProperty != null)
-                                        {
-                                            var gridItems = gridItemsProperty.GetValue(grid) as System.Collections.IEnumerable;
-                                            if (gridItems != null)
-                                            {
-                                                int itemCount = 0;
-                                                foreach (var gridItem in gridItems)
-                                                {
-                                                    itemCount++;
-                                                    if (gridItem is Item childItem && !capturedItemIds.Contains(childItem.Id))
-                                                    {
-                                                        var serializedItem = ConvertToSerializedItem(childItem);
-                                                        if (serializedItem != null)
-                                                        {
-                                                            allItems.Add(serializedItem);
-                                                            capturedItemIds.Add(childItem.Id);
-                                                            newItemsToCheck.Add(childItem);
-                                                            gridItemsFound++;
-                                                            foundMore = true;
-
-                                                            if (verbose)
-                                                                Plugin.Log.LogDebug($"[CAPTURE] Added grid item (no location): {serializedItem.Tpl} (ID: {serializedItem.Id}, Parent: {containerItem.Id}, Grid: {gridId})");
-                                                        }
-                                                    }
-                                                }
-                                                if (gridPass == 1 && verbose) Plugin.Log.LogDebug($"[GRID DEBUG]     Grid has {itemCount} items via Items property");
-                                            }
-                                            else if (gridPass == 1 && verbose)
-                                            {
-                                                Plugin.Log.LogDebug($"[GRID DEBUG]     Items property returned null");
-                                            }
-                                        }
-                                    }
-                                }
-                                if (gridPass == 1 && gridCount == 0 && verbose) Plugin.Log.LogDebug($"[GRID DEBUG]   Grids collection is empty!");
-                            }
-                            else if (gridPass == 1 && verbose)
-                            {
-                                Plugin.Log.LogDebug($"[GRID DEBUG]   Grids field returned null");
-                            }
-                        }
-                        else if (gridPass == 1 && verbose)
-                        {
-                            // Try property as fallback (some items might use property)
-                            var gridsProperty = itemType.GetProperty("Grids");
-                            if (gridsProperty != null)
-                            {
-                                Plugin.Log.LogDebug($"[GRID DEBUG]   Has Grids property (not field)");
-                            }
-                        }
-
-                        // Check for ammo boxes - they might use StackSlots like magazines
-                        // Ammo boxes have template IDs like 5737287724597765e1625ae2, 5737339e2459776af261abeb
-                        var tplStr = containerItem.TemplateId.ToString();
-                        if (tplStr.StartsWith("5737") || itemType.Name.Contains("Ammo") || itemType.Name.Contains("Box"))
-                        {
-                            if (verbose)
-                            {
-                                Plugin.Log.LogDebug($"[AMMO BOX] Checking potential ammo box: {containerItem.TemplateId} Type: {itemType.Name}");
-
-                                // Log all properties and fields for debugging
-                                var allProps = itemType.GetProperties().Select(p => p.Name).ToArray();
-                                var allFields = itemType.GetFields(BindingFlags.Public | BindingFlags.Instance).Select(f => f.Name).ToArray();
-                                Plugin.Log.LogDebug($"[AMMO BOX] Properties: {string.Join(", ", allProps)}");
-                                Plugin.Log.LogDebug($"[AMMO BOX] Fields: {string.Join(", ", allFields)}");
-                            }
-
-                            // Try StackSlot
-                            var stackSlotProp = itemType.GetProperty("StackSlot");
-                            if (stackSlotProp != null)
-                            {
-                                var stackSlot = stackSlotProp.GetValue(containerItem);
-                                if (stackSlot != null)
-                                {
-                                    if (verbose) Plugin.Log.LogDebug($"[AMMO BOX] Found StackSlot: {stackSlot.GetType().Name}");
-
-                                    // Get items from StackSlot
-                                    var itemsProp = stackSlot.GetType().GetProperty("Items");
-                                    if (itemsProp != null)
-                                    {
-                                        var items = itemsProp.GetValue(stackSlot) as IEnumerable<Item>;
-                                        if (items != null)
-                                        {
-                                            foreach (var ammoItem in items.ToList())
-                                            {
-                                                if (!capturedItemIds.Contains(ammoItem.Id))
-                                                {
-                                                    var serializedItem = ConvertToSerializedItem(ammoItem);
-                                                    if (serializedItem != null)
-                                                    {
-                                                        allItems.Add(serializedItem);
-                                                        capturedItemIds.Add(ammoItem.Id);
-                                                        gridItemsFound++;
-                                                        foundMore = true;
-                                                        if (verbose)
-                                                            Plugin.Log.LogDebug($"[AMMO BOX] Captured ammo from box: {ammoItem.TemplateId} Stack={ammoItem.StackObjectsCount}");
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // Check for Cartridges property (magazines AND ammo boxes)
-                        // AmmoBox type has Cartridges property just like magazines
-                        var cartridgesProp = itemType.GetProperty("Cartridges");
-                        if (cartridgesProp != null)
-                        {
-                            var cartridges = cartridgesProp.GetValue(containerItem);
-                            if (cartridges != null)
-                            {
-                                if (verbose) Plugin.Log.LogDebug($"[CARTRIDGES] Found Cartridges on {itemType.Name}: {cartridges.GetType().Name}");
-
-                                // Try to get Items property from cartridges
-                                var itemsProp = cartridges.GetType().GetProperty("Items");
-                                if (itemsProp != null)
-                                {
-                                    var ammoItems = itemsProp.GetValue(cartridges) as IEnumerable<Item>;
-                                    if (ammoItems != null)
-                                    {
-                                        int ammoCount = 0;
-                                        int cartridgePosition = 0; // Track position for LocationIndex
-
-                                        foreach (var ammo in ammoItems)
-                                        {
-                                            ammoCount++;
-                                            if (ammo != null && !capturedItemIds.Contains(ammo.Id))
-                                            {
-                                                var serializedItem = ConvertToSerializedItem(ammo);
-                                                if (serializedItem != null)
-                                                {
-                                                    // CRITICAL: Set LocationIndex for magazine cartridges
-                                                    // SPT profiles use integer locations for cartridges (0, 1, 2, etc.)
-                                                    // This fixes the "expects an item at position X" error
-                                                    serializedItem.LocationIndex = cartridgePosition;
-
-                                                    allItems.Add(serializedItem);
-                                                    capturedItemIds.Add(ammo.Id);
-                                                    gridItemsFound++;
-                                                    foundMore = true;
-
-                                                    if (verbose)
-                                                        Plugin.Log.LogDebug($"[CARTRIDGES] Captured ammo from {itemType.Name}: {serializedItem.Tpl} (ID: {serializedItem.Id}, Parent: {containerItem.Id}, Stack: {ammo.StackObjectsCount}, Position: {cartridgePosition})");
-                                                }
-                                            }
-                                            cartridgePosition++;
-                                        }
-                                        if (verbose) Plugin.Log.LogDebug($"[CARTRIDGES] {itemType.Name} contained {ammoCount} ammo items with positions 0-{cartridgePosition - 1}");
-                                    }
-                                }
-                                else if (verbose)
-                                {
-                                    Plugin.Log.LogDebug($"[CARTRIDGES] No Items property on Cartridges. Available: {string.Join(", ", cartridges.GetType().GetProperties().Select(p => p.Name).Take(10))}");
-                                }
-                            }
-                        }
-                    }
-
-                    // Also check for SLOTS on grid items (e.g., armor plates in armor stored in backpack)
-                    foreach (var gridItem in newItemsToCheck.ToList())
-                    {
-                        if (gridItem == null) continue;
-                        var gridItemType2 = gridItem.GetType();
-
-                        // Check for AllSlots property (armor, weapons, etc. have slots)
-                        var gridItemSlotsProperty = gridItemType2.GetProperty("AllSlots");
-                        if (gridItemSlotsProperty != null)
-                        {
-                            var gridItemSlots = gridItemSlotsProperty.GetValue(gridItem) as System.Collections.IEnumerable;
-                            if (gridItemSlots != null)
-                            {
-                                foreach (var gridSlot in gridItemSlots)
-                                {
-                                    if (gridSlot == null) continue;
-
-                                    // Get ContainedItem from slot
-                                    var containedItemProp2 = gridSlot.GetType().GetProperty("ContainedItem");
-                                    if (containedItemProp2 != null)
-                                    {
-                                        var slotItem = containedItemProp2.GetValue(gridSlot) as Item;
-                                        if (slotItem != null && !capturedItemIds.Contains(slotItem.Id))
-                                        {
-                                            // Get slot ID for logging
-                                            var slotIdProp2 = gridSlot.GetType().GetProperty("ID");
-                                            var slotId2 = slotIdProp2?.GetValue(gridSlot)?.ToString() ?? "unknown";
-
-                                            var serializedSlotItem = ConvertToSerializedItem(slotItem);
-                                            if (serializedSlotItem != null)
-                                            {
-                                                allItems.Add(serializedSlotItem);
-                                                capturedItemIds.Add(slotItem.Id);
-                                                newItemsToCheck.Add(slotItem);
-                                                gridItemsFound++;
-                                                foundMore = true;
-
-                                                if (verbose)
-                                                    Plugin.Log.LogDebug($"[CAPTURE] Added slot item from grid item: {serializedSlotItem.Tpl} (Slot: {slotId2}, Parent: {gridItem.Id})");
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Add newly found items to check in next pass (they might be containers too)
-                    itemsToCheck = newItemsToCheck;
-                }
-
-                if (verbose)
-                    Plugin.Log.LogDebug($"Grid items captured: {gridItemsFound} in {gridPass} passes");
-
-                Plugin.Log.LogDebug($"Total captured items: {capturedItemIds.Count}");
-            }
-            else
-            {
-                // ================================================================
-                // Error Case - No Slot Access Method Worked
-                // Dump debug info to help diagnose the issue
-                // ================================================================
-                Plugin.Log.LogError("Could not find any way to access Equipment slots!");
-                Plugin.Log.LogError("Attempting to enumerate all Equipment properties and methods for debugging...");
-
-                var equipmentType = equipment.GetType();
-                Plugin.Log.LogError($"Equipment type: {equipmentType.FullName}");
-
-                Plugin.Log.LogError("All public properties:");
-                foreach (var prop in equipmentType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
-                {
-                    Plugin.Log.LogError($"  - {prop.Name} : {prop.PropertyType.Name}");
-                }
-
-                Plugin.Log.LogError("All public methods:");
-                foreach (var method in equipmentType.GetMethods(BindingFlags.Public | BindingFlags.Instance).Take(20))
-                {
-                    Plugin.Log.LogError($"  - {method.Name}({string.Join(", ", method.GetParameters().Select(p => p.ParameterType.Name))})");
-                }
-            }
-
-            Plugin.Log.LogDebug($"Total items captured: {allItems.Count}");
+            Plugin.Log.LogDebug($"Total items captured: {allItems.Count} ({gridItemsFound} from grids)");
         }
         catch (Exception ex)
         {
             Plugin.Log.LogError($"Error capturing items: {ex.Message}");
             Plugin.Log.LogError($"Stack trace: {ex.StackTrace}");
         }
+    }
+
+    // ========================================================================
+    // C-06 FIX: Extracted Helper Methods for CaptureAllItems
+    // These methods break down the 664-line CaptureAllItems into testable units
+    // ========================================================================
+
+    /// <summary>
+    /// Captures the Equipment container item itself (server needs its ID).
+    /// </summary>
+    private void CaptureEquipmentContainer(object equipment, List<SerializedItem> allItems)
+    {
+        var equipmentItem = equipment as Item;
+        if (equipmentItem != null)
+        {
+            var equipmentSerialized = ConvertToSerializedItem(equipmentItem);
+            if (equipmentSerialized != null)
+            {
+                allItems.Add(equipmentSerialized);
+                Plugin.Log.LogDebug($"Captured Equipment container: ID={equipmentSerialized.Id}, Tpl={equipmentSerialized.Tpl}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Logs equipment structure for debugging (only in verbose mode).
+    /// </summary>
+    private void LogEquipmentStructure(object equipment)
+    {
+        if (Settings.VerboseCaptureLogging?.Value != true)
+            return;
+
+        Plugin.Log.LogDebug("=== Equipment Properties ===");
+        foreach (var prop in equipment.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        {
+            Plugin.Log.LogDebug($"  Property: {prop.Name} : {prop.PropertyType.Name}");
+        }
+
+        Plugin.Log.LogDebug("=== Equipment Methods (slot-related) ===");
+        foreach (var method in equipment.GetType().GetMethods(BindingFlags.Public | BindingFlags.Instance))
+        {
+            if (method.Name.ToLower().Contains("slot") || method.Name.ToLower().Contains("grid") || method.Name.ToLower().Contains("item"))
+            {
+                Plugin.Log.LogDebug($"  Method: {method.Name}({string.Join(", ", method.GetParameters().Select(p => p.ParameterType.Name + " " + p.Name))})");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets equipment slots using multiple fallback methods for EFT version compatibility.
+    /// </summary>
+    /// <returns>Enumerable of slot objects, or null if no method succeeded.</returns>
+    private IEnumerable<object> GetEquipmentSlots(object equipment)
+    {
+        IEnumerable<object> slots = null;
+
+        // Method 1: Try AllSlots property (preferred - contains ALL equipment slots)
+        var allSlotsProperty = equipment.GetType().GetProperty("AllSlots");
+        if (allSlotsProperty != null)
+        {
+            Plugin.Log.LogDebug("Found AllSlots property, using it...");
+            slots = allSlotsProperty.GetValue(equipment) as IEnumerable<object>;
+            if (slots != null)
+            {
+                var slotList = slots.ToList();
+                Plugin.Log.LogDebug($"AllSlots property returned {slotList.Count} slots");
+                return slotList;
+            }
+        }
+
+        // Method 2: Try GetAllSlots() method as fallback
+        var getAllSlotsMethod = equipment.GetType().GetMethod("GetAllSlots");
+        if (getAllSlotsMethod != null)
+        {
+            Plugin.Log.LogDebug("Trying GetAllSlots() method...");
+            slots = getAllSlotsMethod.Invoke(equipment, null) as IEnumerable<object>;
+            if (slots != null)
+            {
+                var slotList = slots.ToList();
+                Plugin.Log.LogDebug($"GetAllSlots() returned {slotList.Count} slots");
+                return slotList;
+            }
+        }
+
+        // Method 3: Try Slots property as fallback
+        Plugin.Log.LogDebug("AllSlots not found, trying Slots property...");
+        var slotsProperty = equipment.GetType().GetProperty("Slots");
+        if (slotsProperty != null)
+        {
+            Plugin.Log.LogDebug("Found Slots property, using it...");
+            slots = slotsProperty.GetValue(equipment) as IEnumerable<object>;
+            if (slots != null)
+            {
+                var slotList = slots.ToList();
+                Plugin.Log.LogDebug($"Slots property returned {slotList.Count} slots");
+                return slotList;
+            }
+        }
+
+        // Method 4: Last resort - try ContainerSlots (may miss some equipment)
+        Plugin.Log.LogWarning("Falling back to ContainerSlots (may miss some equipment)...");
+        var containerSlotsProperty = equipment.GetType().GetProperty("ContainerSlots");
+        if (containerSlotsProperty != null)
+        {
+            slots = containerSlotsProperty.GetValue(equipment) as IEnumerable<object>;
+            if (slots != null)
+            {
+                var slotList = slots.ToList();
+                Plugin.Log.LogWarning($"ContainerSlots returned {slotList.Count} slots");
+                return slotList;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Logs detailed debug info when no slot access method worked.
+    /// </summary>
+    private void LogSlotAccessFailure(object equipment)
+    {
+        Plugin.Log.LogError("Could not find any way to access Equipment slots!");
+        Plugin.Log.LogError("Attempting to enumerate all Equipment properties and methods for debugging...");
+
+        var equipmentType = equipment.GetType();
+        Plugin.Log.LogError($"Equipment type: {equipmentType.FullName}");
+
+        Plugin.Log.LogError("All public properties:");
+        foreach (var prop in equipmentType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        {
+            Plugin.Log.LogError($"  - {prop.Name} : {prop.PropertyType.Name}");
+        }
+
+        Plugin.Log.LogError("All public methods:");
+        foreach (var method in equipmentType.GetMethods(BindingFlags.Public | BindingFlags.Instance).Take(20))
+        {
+            Plugin.Log.LogError($"  - {method.Name}({string.Join(", ", method.GetParameters().Select(p => p.ParameterType.Name))})");
+        }
+    }
+
+    /// <summary>
+    /// Collects all items from slots into a list of (SlotName, Item) tuples.
+    /// </summary>
+    private List<(string SlotName, Item Item)> CollectSlotItems(IEnumerable<object> slots)
+    {
+        var slotItems = new List<(string SlotName, Item Item)>();
+        bool verbose = Settings.VerboseCaptureLogging?.Value == true;
+
+        if (verbose)
+            Plugin.Log.LogDebug("First pass: Collecting slot items...");
+
+        foreach (var slot in slots)
+        {
+            var slotType = slot.GetType();
+            var slotNameProp = ReflectionCache.GetProperty(slotType, "Name");
+            var slotName = slotNameProp?.GetValue(slot)?.ToString() ?? "Unknown";
+
+            var containedItemProp = ReflectionCache.GetProperty(slotType, "ContainedItem");
+            var containedItem = containedItemProp?.GetValue(slot) as Item;
+
+            if (containedItem != null)
+            {
+                slotItems.Add((slotName, containedItem));
+            }
+        }
+
+        return slotItems;
+    }
+
+    /// <summary>
+    /// Captures top-level equipment slot items (filtered by user configuration).
+    /// Returns the set of slot names that have items.
+    /// </summary>
+    private HashSet<string> CaptureTopLevelSlotItems(
+        List<(string SlotName, Item Item)> slotItems,
+        List<string> slotsToSave,
+        List<SerializedItem> allItems,
+        HashSet<string> capturedItemIds)
+    {
+        var slotsWithItems = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        bool verbose = Settings.VerboseCaptureLogging?.Value == true;
+
+        if (verbose)
+            Plugin.Log.LogDebug("Second pass: Processing top-level equipment slots...");
+
+        foreach (var (slotName, item) in slotItems)
+        {
+            // Only process top-level equipment slots here
+            if (!TopLevelEquipmentSlots.Contains(slotName))
+                continue;
+
+            // Track that this slot has an item
+            slotsWithItems.Add(slotName);
+
+            if (verbose)
+                Plugin.Log.LogDebug($"[SLOT DEBUG] Found item in slot '{slotName}': {item.Template?.NameLocalizationKey ?? item.TemplateId}");
+
+            // Check if this slot is enabled in configuration
+            bool slotEnabled = slotsToSave.Any(s => s.Equals(slotName, StringComparison.OrdinalIgnoreCase));
+
+            if (slotEnabled)
+            {
+                if (verbose)
+                    Plugin.Log.LogDebug($"[SLOT DEBUG]   -> Capturing slot '{slotName}'");
+
+                var serializedItem = ConvertToSerializedItem(item);
+                if (serializedItem != null)
+                {
+                    allItems.Add(serializedItem);
+                    capturedItemIds.Add(item.Id);
+
+                    if (verbose)
+                        Plugin.Log.LogDebug($"[CAPTURE] Added top-level item: {serializedItem.Tpl} (ID: {serializedItem.Id})");
+                }
+            }
+            else if (verbose)
+            {
+                Plugin.Log.LogDebug($"[SLOT DEBUG]   -> SKIPPING slot '{slotName}' (not in slotsToSave list!)");
+            }
+        }
+
+        return slotsWithItems;
+    }
+
+    /// <summary>
+    /// Tracks which enabled slots are empty (no item) for proper restoration.
+    /// </summary>
+    private void TrackEmptySlots(List<string> slotsToSave, HashSet<string> slotsWithItems, List<string> emptySlots)
+    {
+        bool verbose = Settings.VerboseCaptureLogging?.Value == true;
+
+        foreach (var enabledSlot in slotsToSave)
+        {
+            // Only check top-level equipment slots
+            if (!TopLevelEquipmentSlots.Contains(enabledSlot))
+                continue;
+
+            // If this enabled slot doesn't have an item, it's empty
+            if (!slotsWithItems.Contains(enabledSlot))
+            {
+                emptySlots.Add(enabledSlot);
+                if (verbose)
+                    Plugin.Log.LogDebug($"[EMPTY SLOT] Slot '{enabledSlot}' is enabled but empty - will be cleared on restore");
+            }
+        }
+
+        if (emptySlots.Count > 0 && verbose)
+        {
+            Plugin.Log.LogDebug($"[EMPTY SLOTS] Tracked {emptySlots.Count} empty slots: {string.Join(", ", emptySlots)}");
+        }
+    }
+
+    /// <summary>
+    /// Captures nested/mod slots (items whose parent was captured).
+    /// </summary>
+    private void CaptureNestedSlotItems(
+        List<(string SlotName, Item Item)> slotItems,
+        List<SerializedItem> allItems,
+        HashSet<string> capturedItemIds)
+    {
+        bool verbose = Settings.VerboseCaptureLogging?.Value == true;
+
+        if (verbose)
+            Plugin.Log.LogDebug("Third pass: Processing nested slots (mods, armor inserts, etc.)...");
+
+        bool foundNewItems = true;
+        int passCount = 0;
+
+        while (foundNewItems && passCount < 10) // Limit iterations to prevent infinite loops
+        {
+            foundNewItems = false;
+            passCount++;
+
+            foreach (var (slotName, item) in slotItems)
+            {
+                // Skip top-level slots (already processed)
+                if (TopLevelEquipmentSlots.Contains(slotName))
+                    continue;
+
+                // Skip if already captured
+                if (capturedItemIds.Contains(item.Id))
+                    continue;
+
+                // Check if parent was captured
+                var parentId = item.Parent?.Container?.ParentItem?.Id;
+                if (parentId != null && capturedItemIds.Contains(parentId))
+                {
+                    var serializedItem = ConvertToSerializedItem(item);
+                    if (serializedItem != null)
+                    {
+                        allItems.Add(serializedItem);
+                        capturedItemIds.Add(item.Id);
+                        foundNewItems = true;
+
+                        if (verbose)
+                            Plugin.Log.LogDebug($"[CAPTURE] Added nested item from slot '{slotName}': {serializedItem.Tpl} (ID: {serializedItem.Id}, Parent: {parentId})");
+                    }
+                }
+            }
+        }
+
+        if (verbose)
+            Plugin.Log.LogDebug($"Nested item passes completed: {passCount}");
+    }
+
+    /// <summary>
+    /// Captures grid contents (backpack items, rig items, magazine ammo, etc.).
+    /// Returns the number of grid items found.
+    /// </summary>
+    private int CaptureGridContents(
+        List<(string SlotName, Item Item)> slotItems,
+        List<SerializedItem> allItems,
+        HashSet<string> capturedItemIds)
+    {
+        bool verbose = Settings.VerboseCaptureLogging?.Value == true;
+
+        if (verbose)
+            Plugin.Log.LogDebug("Fourth pass: Capturing grid contents from containers...");
+
+        // Build a list of items we need to check for grids
+        var itemsToCheck = new List<Item>();
+        foreach (var (slotName, item) in slotItems)
+        {
+            if (capturedItemIds.Contains(item.Id))
+            {
+                itemsToCheck.Add(item);
+            }
+        }
+
+        if (verbose)
+            Plugin.Log.LogDebug($"Checking {itemsToCheck.Count} captured items for grid contents...");
+
+        int gridItemsFound = 0;
+        bool foundMore = true;
+        int gridPass = 0;
+
+        while (foundMore && gridPass < 10)
+        {
+            foundMore = false;
+            gridPass++;
+            var newItemsToCheck = new List<Item>();
+
+            foreach (var containerItem in itemsToCheck)
+            {
+                if (containerItem == null) continue;
+
+                // Capture items from grids (backpacks, rigs, pockets)
+                int found = CaptureItemsFromGrids(containerItem, allItems, capturedItemIds, newItemsToCheck, gridPass, verbose);
+                if (found > 0)
+                {
+                    gridItemsFound += found;
+                    foundMore = true;
+                }
+
+                // Capture ammo from ammo boxes
+                found = CaptureAmmoBoxContents(containerItem, allItems, capturedItemIds, verbose);
+                if (found > 0)
+                {
+                    gridItemsFound += found;
+                    foundMore = true;
+                }
+
+                // Capture cartridges from magazines
+                found = CaptureCartridges(containerItem, allItems, capturedItemIds, verbose);
+                if (found > 0)
+                {
+                    gridItemsFound += found;
+                    foundMore = true;
+                }
+            }
+
+            // Check for slots on grid items (armor plates in backpack armor)
+            foreach (var gridItem in newItemsToCheck.ToList())
+            {
+                int found = CaptureGridItemSlots(gridItem, allItems, capturedItemIds, newItemsToCheck, verbose);
+                if (found > 0)
+                {
+                    gridItemsFound += found;
+                    foundMore = true;
+                }
+            }
+
+            // Add newly found items to check in next pass
+            itemsToCheck = newItemsToCheck;
+        }
+
+        if (verbose)
+            Plugin.Log.LogDebug($"Grid items captured: {gridItemsFound} in {gridPass} passes");
+
+        return gridItemsFound;
+    }
+
+    /// <summary>
+    /// Captures items from a container's grids (backpacks, rigs, pockets).
+    /// </summary>
+    private int CaptureItemsFromGrids(
+        Item containerItem,
+        List<SerializedItem> allItems,
+        HashSet<string> capturedItemIds,
+        List<Item> newItemsToCheck,
+        int gridPass,
+        bool verbose)
+    {
+        int found = 0;
+        var itemType = containerItem.GetType();
+
+        if (gridPass == 1 && verbose)
+            Plugin.Log.LogDebug($"[GRID DEBUG] Checking item: {containerItem.TemplateId} Type: {itemType.Name}");
+
+        // Check for Grids field (in EFT, Grids is a PUBLIC FIELD)
+        var gridsField = ReflectionCache.GetField(itemType, "Grids", BindingFlags.Public | BindingFlags.Instance);
+        if (gridsField == null)
+        {
+            if (gridPass == 1 && verbose)
+            {
+                var gridsProperty = itemType.GetProperty("Grids");
+                if (gridsProperty != null)
+                    Plugin.Log.LogDebug($"[GRID DEBUG]   Has Grids property (not field)");
+            }
+            return 0;
+        }
+
+        if (gridPass == 1 && verbose) Plugin.Log.LogDebug($"[GRID DEBUG]   Has Grids field");
+
+        var grids = gridsField.GetValue(containerItem) as System.Collections.IEnumerable;
+        if (grids == null)
+        {
+            if (gridPass == 1 && verbose)
+                Plugin.Log.LogDebug($"[GRID DEBUG]   Grids field returned null");
+            return 0;
+        }
+
+        int gridCount = 0;
+        foreach (var grid in grids)
+        {
+            gridCount++;
+            if (grid == null) continue;
+
+            var gridType = grid.GetType();
+            var gridIdProp = ReflectionCache.GetProperty(gridType, "ID");
+            var gridId = gridIdProp?.GetValue(grid)?.ToString() ?? "unknown";
+
+            if (gridPass == 1 && verbose)
+                Plugin.Log.LogDebug($"[GRID DEBUG]   Grid {gridCount}: ID={gridId}, Type={gridType.Name}");
+
+            // Try ItemCollection first (contains KeyValuePair<Item, LocationInGrid>)
+            found += CaptureFromItemCollection(grid, gridType, containerItem, gridId, allItems, capturedItemIds, newItemsToCheck, gridPass, verbose);
+
+            // If no items found via ItemCollection, try Items property
+            if (found == 0)
+            {
+                found += CaptureFromItemsProperty(grid, gridType, containerItem, gridId, allItems, capturedItemIds, newItemsToCheck, gridPass, verbose);
+            }
+        }
+
+        if (gridPass == 1 && gridCount == 0 && verbose)
+            Plugin.Log.LogDebug($"[GRID DEBUG]   Grids collection is empty!");
+
+        return found;
+    }
+
+    /// <summary>
+    /// Captures items from a grid's ItemCollection (with location data).
+    /// </summary>
+    private int CaptureFromItemCollection(
+        object grid,
+        Type gridType,
+        Item containerItem,
+        string gridId,
+        List<SerializedItem> allItems,
+        HashSet<string> capturedItemIds,
+        List<Item> newItemsToCheck,
+        int gridPass,
+        bool verbose)
+    {
+        var itemCollectionProp = ReflectionCache.GetProperty(gridType, "ItemCollection");
+        var containedItemsProp = ReflectionCache.GetProperty(gridType, "ContainedItems");
+        var collectionProp = itemCollectionProp ?? containedItemsProp;
+
+        if (collectionProp == null)
+            return 0;
+
+        var collection = collectionProp.GetValue(grid) as System.Collections.IEnumerable;
+        if (collection == null)
+            return 0;
+
+        int found = 0;
+        int itemCount = 0;
+
+        foreach (var kvp in collection)
+        {
+            itemCount++;
+            var kvpType = kvp.GetType();
+            var keyProp = ReflectionCache.GetProperty(kvpType, "Key");
+            var valueProp = ReflectionCache.GetProperty(kvpType, "Value");
+
+            if (keyProp == null || valueProp == null)
+                continue;
+
+            var childItem = keyProp.GetValue(kvp) as Item;
+            var locationInGrid = valueProp.GetValue(kvp);
+
+            if (childItem == null || capturedItemIds.Contains(childItem.Id))
+                continue;
+
+            var serializedItem = ConvertToSerializedItem(childItem);
+            if (serializedItem == null)
+                continue;
+
+            // Extract location from LocationInGrid
+            if (locationInGrid != null)
+            {
+                var xVal = ReflectionCache.GetMemberValue(locationInGrid, "x");
+                var yVal = ReflectionCache.GetMemberValue(locationInGrid, "y");
+                var rVal = ReflectionCache.GetMemberValue(locationInGrid, "r");
+
+                if (xVal != null && yVal != null)
+                {
+                    serializedItem.Location = new ItemLocation
+                    {
+                        X = Convert.ToInt32(xVal),
+                        Y = Convert.ToInt32(yVal),
+                        R = rVal != null ? Convert.ToInt32(rVal) : 0,
+                        IsSearched = true
+                    };
+                    if (verbose)
+                        Plugin.Log.LogDebug($"[LOCATION] Captured from ItemCollection: {childItem.TemplateId} at X={serializedItem.Location.X}, Y={serializedItem.Location.Y}, R={serializedItem.Location.R}");
+                }
+            }
+
+            allItems.Add(serializedItem);
+            capturedItemIds.Add(childItem.Id);
+            newItemsToCheck.Add(childItem);
+            found++;
+
+            if (verbose)
+                Plugin.Log.LogDebug($"[CAPTURE] Added grid item: {serializedItem.Tpl} (ID: {serializedItem.Id}, Parent: {containerItem.Id}, Grid: {gridId})");
+        }
+
+        if (gridPass == 1 && verbose)
+            Plugin.Log.LogDebug($"[GRID DEBUG]     Grid has {itemCount} items via ItemCollection");
+
+        return found;
+    }
+
+    /// <summary>
+    /// Captures items from a grid's Items property (fallback, no location data).
+    /// </summary>
+    private int CaptureFromItemsProperty(
+        object grid,
+        Type gridType,
+        Item containerItem,
+        string gridId,
+        List<SerializedItem> allItems,
+        HashSet<string> capturedItemIds,
+        List<Item> newItemsToCheck,
+        int gridPass,
+        bool verbose)
+    {
+        var gridItemsProperty = gridType.GetProperty("Items");
+        if (gridItemsProperty == null)
+            return 0;
+
+        var gridItems = gridItemsProperty.GetValue(grid) as System.Collections.IEnumerable;
+        if (gridItems == null)
+        {
+            if (gridPass == 1 && verbose)
+                Plugin.Log.LogDebug($"[GRID DEBUG]     Items property returned null");
+            return 0;
+        }
+
+        int found = 0;
+        int itemCount = 0;
+
+        foreach (var gridItem in gridItems)
+        {
+            itemCount++;
+            if (!(gridItem is Item childItem) || capturedItemIds.Contains(childItem.Id))
+                continue;
+
+            var serializedItem = ConvertToSerializedItem(childItem);
+            if (serializedItem == null)
+                continue;
+
+            allItems.Add(serializedItem);
+            capturedItemIds.Add(childItem.Id);
+            newItemsToCheck.Add(childItem);
+            found++;
+
+            if (verbose)
+                Plugin.Log.LogDebug($"[CAPTURE] Added grid item (no location): {serializedItem.Tpl} (ID: {serializedItem.Id}, Parent: {containerItem.Id}, Grid: {gridId})");
+        }
+
+        if (gridPass == 1 && verbose)
+            Plugin.Log.LogDebug($"[GRID DEBUG]     Grid has {itemCount} items via Items property");
+
+        return found;
+    }
+
+    /// <summary>
+    /// Captures ammo from ammo boxes (via StackSlot).
+    /// </summary>
+    private int CaptureAmmoBoxContents(
+        Item containerItem,
+        List<SerializedItem> allItems,
+        HashSet<string> capturedItemIds,
+        bool verbose)
+    {
+        var itemType = containerItem.GetType();
+        var tplStr = containerItem.TemplateId.ToString();
+
+        // Check if this might be an ammo box
+        if (!tplStr.StartsWith("5737") && !itemType.Name.Contains("Ammo") && !itemType.Name.Contains("Box"))
+            return 0;
+
+        if (verbose)
+        {
+            Plugin.Log.LogDebug($"[AMMO BOX] Checking potential ammo box: {containerItem.TemplateId} Type: {itemType.Name}");
+            var allProps = itemType.GetProperties().Select(p => p.Name).ToArray();
+            var allFields = itemType.GetFields(BindingFlags.Public | BindingFlags.Instance).Select(f => f.Name).ToArray();
+            Plugin.Log.LogDebug($"[AMMO BOX] Properties: {string.Join(", ", allProps)}");
+            Plugin.Log.LogDebug($"[AMMO BOX] Fields: {string.Join(", ", allFields)}");
+        }
+
+        var stackSlotProp = itemType.GetProperty("StackSlot");
+        if (stackSlotProp == null)
+            return 0;
+
+        var stackSlot = stackSlotProp.GetValue(containerItem);
+        if (stackSlot == null)
+            return 0;
+
+        if (verbose) Plugin.Log.LogDebug($"[AMMO BOX] Found StackSlot: {stackSlot.GetType().Name}");
+
+        var itemsProp = stackSlot.GetType().GetProperty("Items");
+        if (itemsProp == null)
+            return 0;
+
+        var items = itemsProp.GetValue(stackSlot) as IEnumerable<Item>;
+        if (items == null)
+            return 0;
+
+        int found = 0;
+        foreach (var ammoItem in items.ToList())
+        {
+            if (capturedItemIds.Contains(ammoItem.Id))
+                continue;
+
+            var serializedItem = ConvertToSerializedItem(ammoItem);
+            if (serializedItem != null)
+            {
+                allItems.Add(serializedItem);
+                capturedItemIds.Add(ammoItem.Id);
+                found++;
+
+                if (verbose)
+                    Plugin.Log.LogDebug($"[AMMO BOX] Captured ammo from box: {ammoItem.TemplateId} Stack={ammoItem.StackObjectsCount}");
+            }
+        }
+
+        return found;
+    }
+
+    /// <summary>
+    /// Captures cartridges from magazines and ammo boxes.
+    /// </summary>
+    private int CaptureCartridges(
+        Item containerItem,
+        List<SerializedItem> allItems,
+        HashSet<string> capturedItemIds,
+        bool verbose)
+    {
+        var itemType = containerItem.GetType();
+        var cartridgesProp = itemType.GetProperty("Cartridges");
+        if (cartridgesProp == null)
+            return 0;
+
+        var cartridges = cartridgesProp.GetValue(containerItem);
+        if (cartridges == null)
+            return 0;
+
+        if (verbose)
+            Plugin.Log.LogDebug($"[CARTRIDGES] Found Cartridges on {itemType.Name}: {cartridges.GetType().Name}");
+
+        var itemsProp = cartridges.GetType().GetProperty("Items");
+        if (itemsProp == null)
+        {
+            if (verbose)
+                Plugin.Log.LogDebug($"[CARTRIDGES] No Items property on Cartridges. Available: {string.Join(", ", cartridges.GetType().GetProperties().Select(p => p.Name).Take(10))}");
+            return 0;
+        }
+
+        var ammoItems = itemsProp.GetValue(cartridges) as IEnumerable<Item>;
+        if (ammoItems == null)
+            return 0;
+
+        int found = 0;
+        int cartridgePosition = 0;
+
+        foreach (var ammo in ammoItems)
+        {
+            if (ammo != null && !capturedItemIds.Contains(ammo.Id))
+            {
+                var serializedItem = ConvertToSerializedItem(ammo);
+                if (serializedItem != null)
+                {
+                    // CRITICAL: Set LocationIndex for magazine cartridges
+                    serializedItem.LocationIndex = cartridgePosition;
+
+                    allItems.Add(serializedItem);
+                    capturedItemIds.Add(ammo.Id);
+                    found++;
+
+                    if (verbose)
+                        Plugin.Log.LogDebug($"[CARTRIDGES] Captured ammo from {itemType.Name}: {serializedItem.Tpl} (ID: {serializedItem.Id}, Parent: {containerItem.Id}, Stack: {ammo.StackObjectsCount}, Position: {cartridgePosition})");
+                }
+            }
+            cartridgePosition++;
+        }
+
+        if (verbose)
+            Plugin.Log.LogDebug($"[CARTRIDGES] {itemType.Name} contained {cartridgePosition} ammo items with positions 0-{cartridgePosition - 1}");
+
+        return found;
+    }
+
+    /// <summary>
+    /// Captures slot items from grid items (e.g., armor plates in backpack armor).
+    /// </summary>
+    private int CaptureGridItemSlots(
+        Item gridItem,
+        List<SerializedItem> allItems,
+        HashSet<string> capturedItemIds,
+        List<Item> newItemsToCheck,
+        bool verbose)
+    {
+        if (gridItem == null)
+            return 0;
+
+        var gridItemType = gridItem.GetType();
+        var gridItemSlotsProperty = gridItemType.GetProperty("AllSlots");
+        if (gridItemSlotsProperty == null)
+            return 0;
+
+        var gridItemSlots = gridItemSlotsProperty.GetValue(gridItem) as System.Collections.IEnumerable;
+        if (gridItemSlots == null)
+            return 0;
+
+        int found = 0;
+        foreach (var gridSlot in gridItemSlots)
+        {
+            if (gridSlot == null) continue;
+
+            var containedItemProp = gridSlot.GetType().GetProperty("ContainedItem");
+            if (containedItemProp == null)
+                continue;
+
+            var slotItem = containedItemProp.GetValue(gridSlot) as Item;
+            if (slotItem == null || capturedItemIds.Contains(slotItem.Id))
+                continue;
+
+            var slotIdProp = gridSlot.GetType().GetProperty("ID");
+            var slotId = slotIdProp?.GetValue(gridSlot)?.ToString() ?? "unknown";
+
+            var serializedSlotItem = ConvertToSerializedItem(slotItem);
+            if (serializedSlotItem != null)
+            {
+                allItems.Add(serializedSlotItem);
+                capturedItemIds.Add(slotItem.Id);
+                newItemsToCheck.Add(slotItem);
+                found++;
+
+                if (verbose)
+                    Plugin.Log.LogDebug($"[CAPTURE] Added slot item from grid item: {serializedSlotItem.Tpl} (Slot: {slotId}, Parent: {gridItem.Id})");
+            }
+        }
+
+        return found;
     }
 
     // ========================================================================
@@ -1230,9 +1396,9 @@ public class InventoryService
             // 1. Its Parent property can create a self-reference (parentId = own ID)
             // 2. Its CurrentAddress.Container.ID returns the session ID, not a slot
             // The server only needs the Equipment ID to remap child item parents.
+            // M-01 FIX: Use shared constant instead of local const
             // ================================================================
-            const string EquipmentTemplateId = "55d7217a4bdc2d86028b456d";
-            if (item.TemplateId.ToString() == EquipmentTemplateId)
+            if (item.TemplateId.ToString() == TemplateIds.Equipment)
             {
                 Plugin.Log.LogDebug($"[EQUIPMENT] Equipment container captured (ID={item.Id}) - skipping parentId/slotId");
                 return serialized;
@@ -1260,7 +1426,8 @@ public class InventoryService
                 // IMPORTANT: Only remap for ammo INSIDE MAGAZINES, not loose ammo in grids!
 
                 // Check if containerId is a small number (magazine ammo slots are 0-99)
-                bool isNumericSlot = int.TryParse(containerId, out int slotNum) && slotNum >= 0 && slotNum < 100;
+                // M-11 FIX: Use constant instead of magic number
+                bool isNumericSlot = int.TryParse(containerId, out int slotNum) && slotNum >= 0 && slotNum < TemplateIds.MaxNumericSlotId;
 
                 // Determine if this item is ammunition
                 bool isAmmoItem = DetectIfAmmo(item);
@@ -1879,7 +2046,8 @@ public class InventoryService
             {
                 var stackMax = item.Template.StackMaxSize;
                 var containerId = item.CurrentAddress?.Container?.ID;
-                bool isNumericSlot = int.TryParse(containerId, out int slotNum) && slotNum >= 0 && slotNum < 100;
+                // M-11 FIX: Use constant instead of magic number
+                bool isNumericSlot = int.TryParse(containerId, out int slotNum) && slotNum >= 0 && slotNum < TemplateIds.MaxNumericSlotId;
 
                 // High stack size AND in numeric slot = probably ammo
                 if (stackMax >= 20 && isNumericSlot)
@@ -2227,7 +2395,9 @@ public class InventoryService
         }
         catch (Exception ex)
         {
-            Plugin.Log.LogDebug($"Could not set stack count: {ex.Message}");
+            // HIGH-002 FIX: Failing to set stack count affects gameplay (wrong item quantities)
+            // Use Warning level so users know their items might have incorrect counts
+            Plugin.Log.LogWarning($"Could not set stack count: {ex.Message}");
         }
     }
 
@@ -2852,7 +3022,11 @@ public class InventoryService
                                         }
                                     }
                                 }
-                                catch { /* Ignore property access errors */ }
+                                catch (Exception ex)
+                                {
+                                    // CRITICAL-002 FIX: Log property access errors for diagnostics
+                                    Plugin.Log.LogDebug($"[KSG] INSURANCE DEBUG - Property access error on {prop.Name}: {ex.Message}");
+                                }
                             }
                         }
                     }

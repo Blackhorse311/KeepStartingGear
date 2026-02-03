@@ -132,10 +132,27 @@ public class AutoSnapshotMonitor : MonoBehaviour
                 OnRaidStart();
             }
         }
-        catch
+        catch (Exception ex) when (IsSafeToSwallow(ex))
         {
+            // LINUS-004 FIX: Only swallow exceptions that are safe to ignore
+            // Critical system exceptions (OutOfMemory, StackOverflow, etc.) will propagate
+            Plugin.Log.LogWarning($"[AutoSnapshot] Raid state detection failed: {ex.Message}");
             _isInRaid = false;
         }
+    }
+
+    /// <summary>
+    /// LINUS-004 FIX: Determines if an exception is safe to swallow and continue.
+    /// Critical system exceptions should never be caught and hidden.
+    /// </summary>
+    private static bool IsSafeToSwallow(Exception ex)
+    {
+        // Never swallow these - they indicate serious system problems
+        return ex is not (OutOfMemoryException or
+            StackOverflowException or
+            System.Threading.ThreadAbortException or
+            System.Runtime.InteropServices.SEHException or
+            AccessViolationException);
     }
 
     private void OnRaidStart()
@@ -158,9 +175,10 @@ public class AutoSnapshotMonitor : MonoBehaviour
                 }
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (IsSafeToSwallow(ex))
         {
-            Plugin.Log.LogDebug($"[AutoSnapshot] Error getting initial value: {ex.Message}");
+            // LINUS-004 FIX: Only swallow safe exceptions
+            Plugin.Log.LogWarning($"[AutoSnapshot] Error getting initial snapshot value: {ex.Message}");
         }
     }
 
@@ -197,9 +215,10 @@ public class AutoSnapshotMonitor : MonoBehaviour
                 TriggerAutoSnapshot(valueGained);
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (IsSafeToSwallow(ex))
         {
-            Plugin.Log.LogDebug($"[AutoSnapshot] Error checking value: {ex.Message}");
+            // LINUS-004 FIX: Only swallow safe exceptions
+            Plugin.Log.LogWarning($"[AutoSnapshot] Error checking loot value: {ex.Message}");
         }
     }
 
@@ -221,7 +240,11 @@ public class AutoSnapshotMonitor : MonoBehaviour
             {
                 location = gameWorld.MainPlayer.Location ?? location;
             }
-            catch { }
+            catch (Exception ex) when (IsSafeToSwallow(ex))
+            {
+                // LINUS-004 FIX: Only swallow safe exceptions
+                Plugin.Log.LogWarning($"[AutoSnapshot] Could not get location name: {ex.Message}");
+            }
 
             // Capture and save snapshot
             var snapshot = InventoryService.Instance?.CaptureInventory(
@@ -255,8 +278,9 @@ public class AutoSnapshotMonitor : MonoBehaviour
                 Plugin.Log.LogDebug($"[AutoSnapshot] Triggered! Value gained: {formattedValue}");
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (IsSafeToSwallow(ex))
         {
+            // LINUS-004 FIX: Only swallow safe exceptions
             Plugin.Log.LogError($"[AutoSnapshot] Error triggering snapshot: {ex.Message}");
         }
     }
@@ -278,7 +302,11 @@ public class AutoSnapshotMonitor : MonoBehaviour
                 Instance._lastSnapshotValue = currentValue?.TotalValue ?? 0;
                 Instance._lastAutoSnapshotTime = Time.time;
             }
-            catch { }
+            catch (Exception ex) when (IsSafeToSwallow(ex))
+            {
+                // LINUS-004 FIX: Only swallow safe exceptions
+                Plugin.Log.LogWarning($"[AutoSnapshot] Error updating snapshot value after manual snapshot: {ex.Message}");
+            }
         }
     }
 

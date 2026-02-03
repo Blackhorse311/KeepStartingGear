@@ -1,12 +1,12 @@
 ================================================================================
-                     KEEP STARTING GEAR v2.0.0
+                     KEEP STARTING GEAR v2.0.4
                       THE COMPLETE USER GUIDE
 ================================================================================
 
   "The cure for gear fear."
 
   Created by Blackhorse311
-  Version 2.0.0 developed in collaboration with Claude (Anthropic)
+  Version 2.0.4 developed in collaboration with Claude (Anthropic)
 
 ================================================================================
                         TABLE OF CONTENTS

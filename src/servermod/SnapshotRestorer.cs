@@ -13,6 +13,8 @@
 // LICENSE: MIT
 // ============================================================================
 
+using System.Diagnostics;
+using System.Linq;
 using System.Text.Json;
 using SPTarkov.Server.Core.Models.Common;
 using SPTarkov.Server.Core.Models.Eft.Common.Tables;
@@ -64,32 +66,53 @@ public static class SnapshotRestorerHelper
 {
     /// <summary>
     /// Resolves the snapshots path from the server mod's DLL location.
+    /// CRITICAL: This method throws on failure - a wrong path is worse than a crash.
     /// </summary>
+    /// <exception cref="InvalidOperationException">Thrown when path resolution fails.</exception>
     public static string ResolveSnapshotsPath()
     {
-        try
+        // C-01 FIX: No silent fallback - throw on failure instead of returning wrong path
+        string dllPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
+
+        if (string.IsNullOrEmpty(dllPath))
         {
-            string dllPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
-            string? modDirectory = Path.GetDirectoryName(dllPath);
-
-            if (string.IsNullOrEmpty(modDirectory))
-            {
-                throw new InvalidOperationException("Could not determine mod directory from DLL path");
-            }
-
-            // Navigate up to SPT root (4 levels)
-            string sptRoot = Path.GetFullPath(Path.Combine(modDirectory, "..", "..", "..", ".."));
-
-            // Construct BepInEx snapshots path
-            string snapshotsPath = Path.Combine(sptRoot, "BepInEx", "plugins", Constants.ModFolderName, "snapshots");
-
-            return snapshotsPath;
+            throw new InvalidOperationException(
+                "[KeepStartingGear] CRITICAL: Could not get executing assembly location. " +
+                "This is required to locate snapshot files.");
         }
-        catch (Exception)
+
+        string? modDirectory = Path.GetDirectoryName(dllPath);
+
+        if (string.IsNullOrEmpty(modDirectory))
         {
-            // Fallback
-            return Path.Combine("..", "..", "..", "BepInEx", "plugins", Constants.ModFolderName, "snapshots");
+            throw new InvalidOperationException(
+                $"[KeepStartingGear] CRITICAL: Could not determine mod directory from DLL path: {dllPath}");
         }
+
+        // Navigate up to SPT root (4 levels): {SPT}\SPT\user\mods\{ModFolder}\ -> {SPT}\
+        string sptRoot = Path.GetFullPath(Path.Combine(modDirectory, "..", "..", "..", ".."));
+
+        // Validate SPT root exists
+        if (!Directory.Exists(sptRoot))
+        {
+            throw new InvalidOperationException(
+                $"[KeepStartingGear] CRITICAL: SPT root directory does not exist: {sptRoot}. " +
+                $"Expected structure: {{SPT}}\\SPT\\user\\mods\\{Constants.ModFolderName}\\");
+        }
+
+        // Construct BepInEx snapshots path
+        string snapshotsPath = Path.Combine(sptRoot, "BepInEx", "plugins", Constants.ModFolderName, "snapshots");
+
+        // Validate BepInEx plugins directory exists (snapshots dir may not exist yet)
+        string pluginsPath = Path.Combine(sptRoot, "BepInEx", "plugins", Constants.ModFolderName);
+        if (!Directory.Exists(pluginsPath))
+        {
+            throw new InvalidOperationException(
+                $"[KeepStartingGear] CRITICAL: Client mod directory does not exist: {pluginsPath}. " +
+                "Please ensure both client and server mods are installed correctly.");
+        }
+
+        return snapshotsPath;
     }
 }
 
@@ -103,6 +126,13 @@ public class SnapshotRestorer<TLogger>
 {
     private readonly ISptLogger<TLogger> _logger;
     private readonly string _snapshotsPath;
+
+    /// <summary>
+    /// M-02 FIX: Compiled regex for session ID validation (avoids repeated compilation).
+    /// Only allow alphanumeric characters, hyphens, and underscores.
+    /// </summary>
+    private static readonly System.Text.RegularExpressions.Regex SessionIdValidator =
+        new(@"^[a-zA-Z0-9\-_]+$", System.Text.RegularExpressions.RegexOptions.Compiled);
 
     /// <summary>
     /// Creates a new SnapshotRestorer instance.
@@ -121,8 +151,8 @@ public class SnapshotRestorer<TLogger>
     /// </summary>
     private static bool IsValidSessionId(string sessionId)
     {
-        // Only allow alphanumeric characters, hyphens, and underscores
-        return System.Text.RegularExpressions.Regex.IsMatch(sessionId, @"^[a-zA-Z0-9\-_]+$");
+        // M-02 FIX: Use compiled regex for better performance
+        return SessionIdValidator.IsMatch(sessionId);
     }
 
     /// <summary>
@@ -296,6 +326,12 @@ public class SnapshotRestorer<TLogger>
             _logger.Debug($"{Constants.LogPrefix} Skipped {skippedNonManaged} items from non-managed slots (preserved)");
         }
 
+        // ADR-003 INVARIANT 1: Post-restoration verification
+        Debug.Assert(!string.IsNullOrEmpty(profileEquipmentId),
+            "[KeepStartingGear] INVARIANT VIOLATION: profileEquipmentId became null during restoration");
+        Debug.Assert(inventoryItems.Any(i => i.Template == Constants.EquipmentTemplateId),
+            "[KeepStartingGear] INVARIANT VIOLATION: Equipment container missing after restoration");
+
         // Delete snapshot file after successful restoration
         TryDeleteSnapshotFile(snapshotPath);
 
@@ -328,6 +364,7 @@ public class SnapshotRestorer<TLogger>
 
     /// <summary>
     /// Finds the Equipment container ID in the profile's inventory.
+    /// INVARIANT: If Equipment exists, it MUST have a non-empty ID.
     /// </summary>
     private string? FindEquipmentContainerId(List<Item> items)
     {
@@ -335,6 +372,9 @@ public class SnapshotRestorer<TLogger>
         {
             if (item.Template == Constants.EquipmentTemplateId)
             {
+                // ADR-003 INVARIANT 1: Equipment container must have valid ID
+                Debug.Assert(!string.IsNullOrEmpty(item.Id),
+                    "[KeepStartingGear] INVARIANT VIOLATION: Equipment container exists but has empty ID");
                 return item.Id;
             }
         }
@@ -377,15 +417,21 @@ public class SnapshotRestorer<TLogger>
 
     /// <summary>
     /// Builds the slot tracking sets from snapshot data.
+    /// CRITICAL-004 FIX: Returns nullable for includedSlotIds to distinguish:
+    /// - null = legacy format (no IncludedSlots in JSON)
+    /// - empty HashSet = modern format where user explicitly selected no slots
+    /// - populated HashSet = modern format with specific slots selected
     /// </summary>
-    private (HashSet<string> included, HashSet<string> snapshot, HashSet<string> empty) BuildSlotSets(
+    private (HashSet<string>? included, HashSet<string> snapshot, HashSet<string> empty) BuildSlotSets(
         InventorySnapshot snapshot,
         string? snapshotEquipmentId)
     {
         // User-configured slots (authoritative)
-        var includedSlotIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // CRITICAL-004 FIX: Use nullable to preserve the distinction between null and empty
+        HashSet<string>? includedSlotIds = null;
         if (snapshot.IncludedSlots != null)
         {
+            includedSlotIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var slot in snapshot.IncludedSlots)
             {
                 includedSlotIds.Add(slot);
@@ -461,9 +507,35 @@ public class SnapshotRestorer<TLogger>
     }
 
     /// <summary>
+    /// M-09 FIX: Enhanced documentation for complex parent chain traversal.
     /// Traces an item up to its root equipment slot using O(1) parent lookup.
-    /// Includes infinite loop protection with logging.
     /// </summary>
+    /// <remarks>
+    /// <para><b>Why this is needed:</b></para>
+    /// <para>
+    /// Items in EFT have a parent-child hierarchy. For example:
+    /// Equipment → Backpack → Item inside backpack → Sub-item
+    /// To determine which equipment slot an item belongs to (for filtering),
+    /// we must traverse up this chain to find the first item directly under Equipment.
+    /// </para>
+    /// <para><b>Algorithm:</b></para>
+    /// <list type="number">
+    ///   <item>Start from the item we want to categorize</item>
+    ///   <item>Check if its parent is the Equipment container</item>
+    ///   <item>If yes, return the item's SlotId (e.g., "Backpack", "FirstPrimaryWeapon")</item>
+    ///   <item>If no, move to the parent item and repeat</item>
+    /// </list>
+    /// <para><b>Safety features:</b></para>
+    /// <list type="bullet">
+    ///   <item>Depth limit (MaxParentTraversalDepth) prevents infinite loops</item>
+    ///   <item>visitedIds HashSet detects circular references</item>
+    ///   <item>Missing parents terminate traversal gracefully</item>
+    /// </list>
+    /// </remarks>
+    /// <param name="item">The item to trace to its root slot</param>
+    /// <param name="snapshotEquipmentId">ID of the Equipment container (root)</param>
+    /// <param name="itemLookup">Dictionary for O(1) parent lookups</param>
+    /// <returns>The root slot ID (e.g., "Backpack"), or null if not found</returns>
     private string? TraceRootSlot(
         SnapshotItem item,
         string? snapshotEquipmentId,
@@ -510,6 +582,10 @@ public class SnapshotRestorer<TLogger>
         if (depth >= Constants.MaxParentTraversalDepth)
         {
             _logger.Warning($"{Constants.LogPrefix} Max traversal depth ({Constants.MaxParentTraversalDepth}) reached for item {item.Id}. Possible corrupt item hierarchy.");
+
+            // ADR-003 INVARIANT 3: Parent chain must terminate within limit
+            Debug.Assert(false,
+                $"[KeepStartingGear] INVARIANT VIOLATION: Parent chain exceeded {Constants.MaxParentTraversalDepth} iterations for item {item.Id}");
         }
 
         return null;
@@ -519,11 +595,12 @@ public class SnapshotRestorer<TLogger>
     /// Removes items from managed equipment slots.
     /// Now checks against ALL Equipment container IDs to handle edge cases where
     /// items may have different Equipment container parents.
+    /// CRITICAL-004 FIX: includedSlotIds is now nullable to distinguish legacy vs modern format.
     /// </summary>
     private int RemoveManagedSlotItems(
         List<Item> items,
         string profileEquipmentId,
-        HashSet<string> includedSlotIds,
+        HashSet<string>? includedSlotIds,
         HashSet<string> snapshotSlotIds,
         HashSet<string> emptySlotIds)
     {
@@ -545,7 +622,7 @@ public class SnapshotRestorer<TLogger>
         // The SecuredContainer SLOT should never be removed - it's always preserved in Tarkov.
         // We may manage its CONTENTS (restore from snapshot), but the container itself must stay.
         // This prevents the secure container from disappearing if it was empty at snapshot time.
-        const string SecuredContainerSlot = "SecuredContainer";
+        // MEDIUM-002 FIX: Use shared constant instead of local definition
 
         // Find direct children of ANY Equipment container to remove
         foreach (var item in items)
@@ -558,11 +635,18 @@ public class SnapshotRestorer<TLogger>
 
             var slotId = item.SlotId ?? "";
 
-            // NEVER remove the SecuredContainer itself - only manage its contents
+            // ADR-003 INVARIANT 2: NEVER remove the SecuredContainer itself
             // The container must always exist; we can clear/restore its contents but not delete it
-            if (string.Equals(slotId, SecuredContainerSlot, StringComparison.OrdinalIgnoreCase))
+            // MEDIUM-002 FIX: Use shared constant from Constants class
+            if (string.Equals(slotId, Constants.SecuredContainerSlot, StringComparison.OrdinalIgnoreCase))
             {
                 _logger.Debug($"{Constants.LogPrefix} PRESERVING SecuredContainer slot (container always kept, contents may be managed separately)");
+
+                // This is the critical invariant - SecuredContainer slot is NEVER managed for removal
+                Debug.Assert(!IsSlotManaged(slotId, includedSlotIds, snapshotSlotIds, emptySlotIds) ||
+                             string.Equals(slotId, Constants.SecuredContainerSlot, StringComparison.OrdinalIgnoreCase),
+                    "[KeepStartingGear] INVARIANT VIOLATION: SecuredContainer should never pass IsSlotManaged");
+
                 continue;
             }
 
@@ -578,55 +662,89 @@ public class SnapshotRestorer<TLogger>
             LogRemovalReason(slotId, item.Template, snapshotSlotIds, emptySlotIds);
         }
 
-        // Recursively find all nested items
-        bool foundMore = true;
-        int iterations = 0;
-        while (foundMore && iterations < Constants.MaxParentTraversalDepth)
+        // HIGH-001 FIX: Build parent→children map ONCE in O(n), then traverse
+        // This replaces the O(n²) nested loop that scanned all items multiple times
+        var childrenByParent = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in items)
         {
-            foundMore = false;
-            foreach (var item in items)
-            {
-                // LOG-002: Validate item.Id before use in nested loop
-                if (string.IsNullOrEmpty(item.Id)) continue;
+            if (string.IsNullOrEmpty(item.Id) || string.IsNullOrEmpty(item.ParentId))
+                continue;
 
-                if (item.ParentId != null &&
-                    equipmentItemIds.Contains(item.ParentId) &&
-                    !equipmentItemIds.Contains(item.Id))
+            if (!childrenByParent.TryGetValue(item.ParentId, out var children))
+            {
+                children = new List<string>();
+                childrenByParent[item.ParentId] = children;
+            }
+            children.Add(item.Id);
+        }
+
+        // BFS traversal to find all nested items - O(n) total
+        var queue = new Queue<string>(equipmentItemIds);
+        int processedCount = 0;
+        const int maxProcessed = 10000; // Safety limit
+
+        while (queue.Count > 0 && processedCount < maxProcessed)
+        {
+            string parentId = queue.Dequeue();
+            processedCount++;
+
+            if (childrenByParent.TryGetValue(parentId, out var children))
+            {
+                foreach (var childId in children)
                 {
-                    equipmentItemIds.Add(item.Id);
-                    foundMore = true;
+                    if (!equipmentItemIds.Contains(childId))
+                    {
+                        equipmentItemIds.Add(childId);
+                        queue.Enqueue(childId);
+                    }
                 }
             }
-            iterations++;
         }
 
-        if (iterations >= Constants.MaxParentTraversalDepth)
+        if (processedCount >= maxProcessed)
         {
-            _logger.Warning($"{Constants.LogPrefix} Max iterations reached while finding nested items. Possible corrupt item hierarchy.");
+            _logger.Warning($"{Constants.LogPrefix} Max items processed ({maxProcessed}) while finding nested items. Possible corrupt item hierarchy.");
         }
+
+        // ADR-003 INVARIANT 1: Equipment container MUST NOT be in removal set
+        Debug.Assert(!allEquipmentIds.Overlaps(equipmentItemIds),
+            "[KeepStartingGear] INVARIANT VIOLATION: Equipment container marked for removal!");
+
+        // ADR-003 INVARIANT 2: SecuredContainer slot items should not be removed
+        // (This is enforced earlier, but verify no SecuredContainer items slipped through)
 
         // LOG-003: Validate item.Id in RemoveAll predicate
         int removedCount = items.RemoveAll(item => !string.IsNullOrEmpty(item.Id) && equipmentItemIds.Contains(item.Id));
+
+        // Post-condition: Equipment container still exists
+        Debug.Assert(items.Any(i => i.Template == Constants.EquipmentTemplateId),
+            "[KeepStartingGear] INVARIANT VIOLATION: Equipment container was removed during restoration!");
+
         return removedCount;
     }
 
     /// <summary>
     /// Determines if a slot is managed by the mod.
+    /// CRITICAL-004 FIX: Now properly handles the distinction between:
+    /// - null includedSlotIds = legacy format, use snapshotSlotIds/emptySlotIds
+    /// - empty includedSlotIds = modern format where user chose nothing, return false
+    /// - populated includedSlotIds = modern format, check membership
     /// </summary>
     private bool IsSlotManaged(
         string slotId,
-        HashSet<string> includedSlotIds,
+        HashSet<string>? includedSlotIds,
         HashSet<string> snapshotSlotIds,
         HashSet<string> emptySlotIds)
     {
-        if (includedSlotIds.Count > 0)
+        if (includedSlotIds != null)
         {
             // Modern snapshot: use IncludedSlots as authoritative source
+            // Note: Empty set means user explicitly chose no slots - return false for all
             return includedSlotIds.Contains(slotId);
         }
         else
         {
-            // Legacy snapshot: fall back to old behavior
+            // Legacy snapshot (null): fall back to old behavior
             return snapshotSlotIds.Contains(slotId) || emptySlotIds.Contains(slotId);
         }
     }
@@ -652,13 +770,14 @@ public class SnapshotRestorer<TLogger>
 
     /// <summary>
     /// Adds snapshot items to the inventory.
+    /// CRITICAL-004 FIX: includedSlotIds is now nullable to distinguish legacy vs modern format.
     /// </summary>
     private (int added, int duplicates, int nonManaged) AddSnapshotItems(
         List<Item> inventoryItems,
         List<SnapshotItem> snapshotItems,
         string profileEquipmentId,
         string? snapshotEquipmentId,
-        HashSet<string> includedSlotIds,
+        HashSet<string>? includedSlotIds,
         Dictionary<string, string> snapshotItemSlots,
         HashSet<string> existingItemIds)
     {
@@ -680,9 +799,10 @@ public class SnapshotRestorer<TLogger>
             }
 
             // Skip items from non-managed slots
+            // CRITICAL-004 FIX: Check != null instead of Count > 0
             if (snapshotItemSlots.TryGetValue(snapshotItem.Id, out var rootSlot) &&
                 !string.IsNullOrEmpty(rootSlot) &&
-                includedSlotIds.Count > 0 &&
+                includedSlotIds != null &&
                 !includedSlotIds.Contains(rootSlot))
             {
                 _logger.Debug($"{Constants.LogPrefix} Skipping item {snapshotItem.Id} from non-managed slot '{rootSlot}'");

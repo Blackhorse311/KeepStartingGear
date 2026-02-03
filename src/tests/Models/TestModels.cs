@@ -93,6 +93,7 @@ public class UpdRepairable
 
 /// <summary>
 /// Test version of InventorySnapshot.
+/// Extended with slot tracking for restoration algorithm tests.
 /// </summary>
 public class InventorySnapshot
 {
@@ -104,6 +105,20 @@ public class InventorySnapshot
 
     [JsonProperty("items")]
     public List<SerializedItem> Items { get; set; } = new();
+
+    /// <summary>
+    /// Slots that were included (protected) by user configuration.
+    /// null = legacy format, empty = no slots selected, populated = specific slots.
+    /// </summary>
+    [JsonProperty("includedSlots")]
+    public List<string>? IncludedSlots { get; set; }
+
+    /// <summary>
+    /// Slots that were empty at snapshot time.
+    /// Items in these slots should be removed during restoration.
+    /// </summary>
+    [JsonProperty("emptySlots")]
+    public List<string>? EmptySlots { get; set; }
 
     [JsonProperty("modVersion")]
     public string? ModVersion { get; set; }

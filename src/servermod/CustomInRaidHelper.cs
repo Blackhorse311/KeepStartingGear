@@ -217,6 +217,10 @@ public class CustomInRaidHelper : InRaidHelper
             _logger.Warning($"{Constants.LogPrefix} Snapshot restoration failed: {result.ErrorMessage}");
         }
 
+        // H-06 FIX: Clear state on ALL exit paths, not just success
+        // This prevents stale state from leaking to subsequent requests
+        SnapshotRestorationState.ClearManagedSlots();
+
         // Normal death processing - no snapshot found
         _logger.Debug($"{Constants.LogPrefix} Normal death processing - DeleteInventory will proceed");
         base.DeleteInventory(pmcData, sessionId);
@@ -262,9 +266,10 @@ public class CustomInRaidHelper : InRaidHelper
 
         // Slots that are NEVER deleted on death in normal Tarkov
         // SecuredContainer is always preserved - this is core Tarkov behavior
+        // MEDIUM-002 FIX: Use shared constant from Constants class
         var alwaysPreservedSlots = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "SecuredContainer"
+            Constants.SecuredContainerSlot
         };
 
         foreach (var item in inventory.Items)
@@ -300,7 +305,9 @@ public class CustomInRaidHelper : InRaidHelper
         }
 
         // Remove the items
-        int removed = inventory.Items.RemoveAll(item => itemsToRemove.Contains(item.Id));
+        // H-05 FIX: Null-safe check on item.Id before passing to HashSet.Contains
+        int removed = inventory.Items.RemoveAll(item =>
+            !string.IsNullOrEmpty(item.Id) && itemsToRemove.Contains(item.Id));
         _logger.Info($"{Constants.LogPrefix} Deleted {removed} items from non-managed equipment slots");
     }
 
@@ -309,11 +316,19 @@ public class CustomInRaidHelper : InRaidHelper
     /// </summary>
     private void CollectItemAndChildren(string itemId, List<SPTarkov.Server.Core.Models.Eft.Common.Tables.Item> items, HashSet<string> toRemove)
     {
+        // CRITICAL-003 FIX: Validate itemId before use to prevent null reference exceptions
+        if (string.IsNullOrEmpty(itemId))
+            return;
+
         toRemove.Add(itemId);
 
         // Find all children (items whose ParentId is this item)
         foreach (var item in items)
         {
+            // CRITICAL-003 FIX: Check item.Id for null BEFORE using it in Contains() or recursion
+            if (string.IsNullOrEmpty(item.Id))
+                continue;
+
             if (item.ParentId == itemId && !toRemove.Contains(item.Id))
             {
                 CollectItemAndChildren(item.Id, items, toRemove);

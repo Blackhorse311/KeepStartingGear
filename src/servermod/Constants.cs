@@ -19,7 +19,7 @@ public static class Constants
     /// Current mod version. Update this for each release.
     /// Must match ModMetadata.Version and client Plugin.PluginVersion.
     /// </summary>
-    public const string ModVersion = "2.0.0";
+    public const string ModVersion = "2.0.4";
 
     /// <summary>
     /// Equipment container template ID - identifies the root equipment container.
@@ -41,4 +41,11 @@ public static class Constants
     /// Maximum depth for parent chain traversal to prevent infinite loops.
     /// </summary>
     public const int MaxParentTraversalDepth = 20;
+
+    /// <summary>
+    /// MEDIUM-002 FIX: Shared constant for SecuredContainer slot name.
+    /// Used by both SnapshotRestorer and CustomInRaidHelper for consistent slot identification.
+    /// The SecuredContainer is always preserved on death in normal Tarkov behavior.
+    /// </summary>
+    public const string SecuredContainerSlot = "SecuredContainer";
 }

@@ -139,8 +139,14 @@ public class LoadoutProfiles
             }
 
             // Read profile
+            // HIGH-004 FIX: Explicitly disable TypeNameHandling to prevent type confusion attacks
+            // Newtonsoft.Json could deserialize malicious types if TypeNameHandling.Auto is used
             string json = File.ReadAllText(profilePath);
-            var snapshot = JsonConvert.DeserializeObject<InventorySnapshot>(json);
+            var settings = new JsonSerializerSettings
+            {
+                TypeNameHandling = TypeNameHandling.None
+            };
+            var snapshot = JsonConvert.DeserializeObject<InventorySnapshot>(json, settings);
 
             if (snapshot == null || !snapshot.IsValid())
             {
