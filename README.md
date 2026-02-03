@@ -360,30 +360,45 @@ Together, we delivered:
 
 ### Community Contributors
 
-Thanks to everyone who reported bugs and helped improve the mod:
+A huge thank you to everyone who reported bugs, provided logs, and helped make this mod better. **40+ bug fixes** wouldn't have been possible without you.
 
-- **@Troyoza** - Reported hardcoded paths and character screen bounce issues
-- **@Wolthon** - Provided detailed logs for restoration flow debugging
-- **@rSlade** - Early testing and feedback
-- **@20fpsguy** - Reported scav raid snapshot saving and false extraction detection
-- **@Recker** - Reported secure container deletion, ammo stacks, and empty slots issues
-- **@VeiledFury** - Reported release package structure issue
-- **@immortal_wombat** - Reported medkit, armor durability, and armor plates issues
-- **@Alcorsa** - Reported SPT 4.0.8 compatibility issue
-- **@calafex** - Reported dogtag metadata and Surv12 restoration issues
-- **@rimmyjob** - Reported secure container and magazine ammo bugs
-- **@Matheus** - Reported gamma container disappearing during raid loading
-- **@zezaovlr** - Reported ammo/grenade restoration issue
-- **@Toireht, @L4Z3RB1** - Reported version mismatch issues
-- **@kurdamir2** - Reported snapshot not clearing after extraction
-- **@andryi2509** - Reported SVM detection and settings issues
-- **@trollcze, @cykablyat, @benadryldealer** - Reported duplicate item crashes
-- **@zezika, @Bert** - Reported secure container issues
-- **@dilirity** - Identified folder structure issue
-- **@Vafelz** - Requested notification disable option
-- **@najix, @katzenmadchenaufbier, @Alake, @stiffe0114, @Buszman** - Reported various issues on Forge
+| Contributor | Contributions |
+|-------------|---------------|
+| **@Troyoza** | Hardcoded paths, character screen bounce, grid contents not captured |
+| **@Wolthon** | Detailed restoration flow logs, secure container loss report |
+| **@rSlade** | Early testing and feedback, boss kill restoration issue |
+| **@immortal_wombat** | Medkit durability, armor durability, armor plates in backpack |
+| **@Recker** | Empty slots keeping loot, secure container deletion, ammo stacks |
+| **@andryi2509** | Extensive testing, SVM detection, surgical kit errors, duplicates |
+| **@calafex** | Dogtag metadata wipe, Surv12 restoration issues |
+| **@rimmyjob** | High capacity magazine ammo, secure container when disabled |
+| **@Matheus** | Gamma container disappearing, folder structure, secure container |
+| **@thechieff21** | All items kept after death with detailed logs (GitHub #18) |
+| **@Kralicek94** | Unprotected weapon slots misbehaving (GitHub #17) |
+| **@20fpsguy** | Scav raid snapshots, false extraction, secure container disappearing |
+| **@dilirity** | Folder structure fix (GitHub #12) |
+| **@Vafelz** | Notification disable option request (GitHub #14) |
+| **@Alcorsa** | SPT 4.0.8 compatibility issue |
+| **@VeiledFury** | Release package structure issue |
+| **@Toireht** | Version mismatch issue |
+| **@L4Z3RB1** | Version mismatch (GitHub #11) |
+| **@kurdamir2** | Snapshot not clearing, stale snapshots after transit |
+| **@trollcze** | Duplicate item crashes |
+| **@cykablyat** | Duplicate item crash, profile corruption |
+| **@benadryldealer** | Duplicate item crashes |
+| **@zezika** | Secure container issues |
+| **@Bert** | Secure container issues, FiR status clarification |
+| **@zezaovlr** | Ammo/grenade restoration issue |
+| **@Buszman** | Magazine ammo disappearing, stale snapshots after transit |
+| **@NomenIgnatum** | Medkit HP restoration issue |
+| **@Television Hater** | Duplicate item crash |
+| **@SPDragon** | PMC bot extract bug |
+| **@najix** | Folder structure issues on Forge |
+| **@katzenmadchenaufbier** | Folder structure issues on Forge |
+| **@Alake** | Folder structure issues on Forge |
+| **@stiffe0114** | Folder structure issues on Forge |
 
-*Community-tested with 30+ bug fixes since v1.0.*
+*32 community contributors. 40+ bug fixes since v1.0.*
 
 ---
 
