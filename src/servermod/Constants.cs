@@ -19,7 +19,7 @@ public static class Constants
     /// Current mod version. Update this for each release.
     /// Must match ModMetadata.Version and client Plugin.PluginVersion.
     /// </summary>
-    public const string ModVersion = "2.0.4";
+    public const string ModVersion = "2.0.5";
 
     /// <summary>
     /// Equipment container template ID - identifies the root equipment container.
@@ -48,4 +48,11 @@ public static class Constants
     /// The SecuredContainer is always preserved on death in normal Tarkov behavior.
     /// </summary>
     public const string SecuredContainerSlot = "SecuredContainer";
+
+    /// <summary>
+    /// Pockets slot name. Like SecuredContainer, the Pockets item is a permanent
+    /// fixture of the player's equipment and must NEVER be deleted during restoration.
+    /// Deleting the Pockets item permanently corrupts the player's profile.
+    /// </summary>
+    public const string PocketsSlot = "Pockets";
 }

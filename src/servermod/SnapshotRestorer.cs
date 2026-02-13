@@ -650,6 +650,15 @@ public class SnapshotRestorer<TLogger>
                 continue;
             }
 
+            // INVARIANT: NEVER remove the Pockets item itself
+            // Pockets is a permanent fixture of the player's equipment, like SecuredContainer.
+            // Deleting it permanently corrupts the profile (pockets cannot be re-created).
+            if (string.Equals(slotId, Constants.PocketsSlot, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.Debug($"{Constants.LogPrefix} PRESERVING Pockets slot (permanent item, never deleted)");
+                continue;
+            }
+
             bool slotIsManaged = IsSlotManaged(slotId, includedSlotIds, snapshotSlotIds, emptySlotIds);
 
             if (!slotIsManaged)

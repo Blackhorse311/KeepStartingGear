@@ -189,8 +189,8 @@ public class RaidEndInterceptor(
 
                     // Set flag so CustomInRaidHelper only preserves managed slots
                     // Non-managed slots will still be deleted normally (player loses unprotected items)
-                    SnapshotRestorationState.MarkRestored(restoreResult.ManagedSlotIds);
-                    logger.Debug($"{Constants.LogPrefix} Set InventoryRestoredFromSnapshot flag with {restoreResult.ManagedSlotIds?.Count ?? 0} managed slots");
+                    SnapshotRestorationState.MarkRestored(sessionID.ToString(), restoreResult.ManagedSlotIds);
+                    logger.Debug($"{Constants.LogPrefix} Set restoration state for session {sessionID} with {restoreResult.ManagedSlotIds?.Count ?? 0} managed slots");
                 }
                 else
                 {

@@ -5,6 +5,60 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.5] - 2026-02-13
+
+### Fixed - Critical Gear Loss, Secure Container & Pockets Corruption
+
+This release fixes two critical bugs that caused total gear loss on death, secure container disappearing, and permanent pocket corruption. Multiple users reported these issues since v2.0.1.
+
+#### ThreadLocal State Communication Failure (CRITICAL)
+
+**Problem:** `SnapshotRestorationState` used `ThreadLocal<bool>` for communication between `RaidEndInterceptor` (which restores inventory) and `CustomInRaidHelper.DeleteInventory` (which must skip deletion). If SPT dispatched these on different threads, the ThreadLocal flag was invisible on the second thread. The fallback `TryRestore` also failed because the snapshot file was already deleted by the interceptor. Result: `base.DeleteInventory()` ran and wiped ALL equipment.
+
+**Symptoms:**
+- Total gear loss on death (intermittent)
+- Secure container disappearing after 2-3 deaths
+- Gear appearing on hideout mannequin instead of character
+
+**Fix:** Replaced `ThreadLocal` with `ConcurrentDictionary<string, RestorationData>` keyed by session ID. Both callers already had access to the session ID. `TryRemove` provides atomic check-and-consume semantics. Added stale entry cleanup (5-minute timeout) to prevent memory leaks.
+
+**File:** `src/servermod/SnapshotRestorationState.cs` (complete rewrite)
+
+#### Pockets Permanently Corrupted on Death (HIGH)
+
+**Problem:** Only `SecuredContainer` was in the `alwaysPreservedSlots` set. Pockets is a permanent fixture (like SecuredContainer) that should NEVER be deleted. When Pockets was a non-managed slot, `DeleteNonManagedSlotItems` deleted the entire Pockets ITEM (not just contents), permanently corrupting the profile. Same issue existed in `RemoveManagedSlotItems`.
+
+**Symptoms:**
+- Pockets appearing as "empty rig slot" with no slots
+- Cannot be fixed by removing the mod or dying without it
+- Permanent profile corruption
+
+**Fix:** Added Pockets to `alwaysPreservedSlots` in `DeleteNonManagedSlotItems` and added explicit Pockets protection in `RemoveManagedSlotItems` (identical pattern to SecuredContainer).
+
+**Files:** `src/servermod/CustomInRaidHelper.cs`, `src/servermod/SnapshotRestorer.cs`, `src/servermod/Constants.cs`
+
+### Technical
+
+- Replaced `ThreadLocal<bool>`, `ThreadLocal<HashSet<string>?>`, `ThreadLocal<int>` with single `ConcurrentDictionary<string, RestorationData>`
+- New API: `MarkRestored(sessionId, managedSlotIds)`, `TryConsume(sessionId, out managedSlotIds)`, `Clear(sessionId)`
+- Added `Constants.PocketsSlot` shared constant
+- Updated pure test algorithm with Pockets invariant
+- Added 3 new unit tests for Pockets protection (44 total)
+- All fixes are server-side only; client DLL unchanged
+
+### Contributors
+
+- **@20fpsguy** - Reported secure container disappearing after multiple deaths
+- **@GrandParzival** - Reported total gear loss including pockets on Labs
+- **@Vicarious** - Reported gear on mannequin and permanent pocket corruption
+- **@BGSenTineL** - Reported pockets and special slots lost, gear on mannequin
+
+### Compatibility
+
+- SPT 4.0.x (tested on 4.0.11)
+
+---
+
 ## [2.0.4] - 2026-02-02
 
 ### Added - Healthcare-Grade Testing Infrastructure

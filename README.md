@@ -375,7 +375,7 @@ A huge thank you to everyone who reported bugs, provided logs, and helped make t
 | **@Matheus** | Gamma container disappearing, folder structure, secure container |
 | **@thechieff21** | All items kept after death with detailed logs (GitHub #18) |
 | **@Kralicek94** | Unprotected weapon slots misbehaving (GitHub #17) |
-| **@20fpsguy** | Scav raid snapshots, false extraction, secure container disappearing |
+| **@20fpsguy** | Scav raid snapshots, false extraction, secure container disappearing, gear loss on death |
 | **@dilirity** | Folder structure fix (GitHub #12) |
 | **@Vafelz** | Notification disable option request (GitHub #14) |
 | **@Alcorsa** | SPT 4.0.8 compatibility issue |
@@ -397,8 +397,11 @@ A huge thank you to everyone who reported bugs, provided logs, and helped make t
 | **@katzenmadchenaufbier** | Folder structure issues on Forge |
 | **@Alake** | Folder structure issues on Forge |
 | **@stiffe0114** | Folder structure issues on Forge |
+| **@GrandParzival** | Total gear loss on Labs, pockets corruption |
+| **@Vicarious** | Gear loss, secure container disappearing, pockets permanently broken |
+| **@BGSenTineL** | Lost pockets and special slots, gear on mannequin |
 
-*32 community contributors. 40+ bug fixes since v1.0.*
+*35 community contributors. 40+ bug fixes since v1.0.*
 
 ---
 

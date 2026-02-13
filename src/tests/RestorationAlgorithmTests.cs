@@ -320,6 +320,36 @@ public class IsSlotManagedTests
     }
 
     [Fact]
+    public void ReturnsFalse_ForPockets_Always()
+    {
+        // Arrange - Pockets should NEVER be managed regardless of settings
+        var includedSlots = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Pockets" };
+        var snapshotSlots = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Pockets" };
+        var emptySlots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // Act
+        var result = RestorationAlgorithm.IsSlotManaged("Pockets", includedSlots, snapshotSlots, emptySlots);
+
+        // Assert - INVARIANT: Pockets is NEVER managed (it's a permanent item)
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void ReturnsFalse_ForPockets_CaseInsensitive()
+    {
+        // Arrange
+        var includedSlots = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "POCKETS" };
+        var snapshotSlots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var emptySlots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // Act
+        var result = RestorationAlgorithm.IsSlotManaged("pockets", includedSlots, snapshotSlots, emptySlots);
+
+        // Assert
+        Assert.False(result);
+    }
+
+    [Fact]
     public void ReturnsTrue_WhenSlotInIncludedSlots()
     {
         // Arrange
@@ -455,6 +485,34 @@ public class SimulateRestorationTests
         Assert.True(result.Success);
         Assert.Contains(profileItems, i => i.Id == "gamma");
         Assert.Contains(profileItems, i => i.Id == "item-in-gamma");
+    }
+
+    [Fact]
+    public void PreservesPockets_Always()
+    {
+        // Arrange - Pockets should NEVER be removed, like SecuredContainer
+        var profileItems = new List<AlgorithmItem>
+        {
+            AlgorithmItem.Create(_equipmentId, tpl: AlgorithmConstants.EquipmentTemplateId),
+            AlgorithmItem.Create("pockets-item", parentId: _equipmentId, slotId: "Pockets", tpl: "pockets-tpl"),
+            AlgorithmItem.Create("item-in-pockets", parentId: "pockets-item", slotId: "main")
+        };
+
+        var snapshotItems = new List<AlgorithmItem>
+        {
+            AlgorithmItem.Create("snapshot-equipment", tpl: AlgorithmConstants.EquipmentTemplateId)
+            // Empty snapshot - no Pockets
+        };
+
+        var includedSlots = new List<string> { "Pockets" };
+
+        // Act
+        var result = RestorationAlgorithm.SimulateRestoration(profileItems, snapshotItems, includedSlots, null);
+
+        // Assert - Pockets should still exist (permanent item, never deleted)
+        Assert.True(result.Success);
+        Assert.Contains(profileItems, i => i.Id == "pockets-item");
+        Assert.Contains(profileItems, i => i.Id == "item-in-pockets");
     }
 
     [Fact]

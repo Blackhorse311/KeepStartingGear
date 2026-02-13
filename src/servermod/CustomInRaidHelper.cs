@@ -146,8 +146,8 @@ public class CustomInRaidHelper : InRaidHelper
     /// </remarks>
     public override void DeleteInventory(PmcData pmcData, MongoId sessionId)
     {
-        // Atomically check and consume the restoration flag, getting managed slots
-        if (SnapshotRestorationState.TryConsume(out var managedSlotIds))
+        // Atomically check and consume the restoration state for this session
+        if (SnapshotRestorationState.TryConsume(sessionId.ToString(), out var managedSlotIds))
         {
             if (managedSlotIds == null)
             {
@@ -163,14 +163,12 @@ public class CustomInRaidHelper : InRaidHelper
                 // This handles cases where user unchecked all protection options
                 _logger.Debug($"{Constants.LogPrefix} No managed slots configured - using normal death processing");
                 base.DeleteInventory(pmcData, sessionId);
-                SnapshotRestorationState.ClearManagedSlots();
                 return;
             }
 
             // Normal case: preserve managed slots, delete items from non-managed slots
             _logger.Debug($"{Constants.LogPrefix} Partial DeleteInventory - preserving {managedSlotIds.Count} managed slots, deleting non-managed");
             DeleteNonManagedSlotItems(pmcData, managedSlotIds);
-            SnapshotRestorationState.ClearManagedSlots();
             return;
         }
 
@@ -217,10 +215,6 @@ public class CustomInRaidHelper : InRaidHelper
             _logger.Warning($"{Constants.LogPrefix} Snapshot restoration failed: {result.ErrorMessage}");
         }
 
-        // H-06 FIX: Clear state on ALL exit paths, not just success
-        // This prevents stale state from leaking to subsequent requests
-        SnapshotRestorationState.ClearManagedSlots();
-
         // Normal death processing - no snapshot found
         _logger.Debug($"{Constants.LogPrefix} Normal death processing - DeleteInventory will proceed");
         base.DeleteInventory(pmcData, sessionId);
@@ -265,11 +259,12 @@ public class CustomInRaidHelper : InRaidHelper
         var itemsToRemove = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         // Slots that are NEVER deleted on death in normal Tarkov
-        // SecuredContainer is always preserved - this is core Tarkov behavior
-        // MEDIUM-002 FIX: Use shared constant from Constants class
+        // SecuredContainer and Pockets are permanent fixtures - deleting them corrupts the profile
+        // MEDIUM-002 FIX: Use shared constants from Constants class
         var alwaysPreservedSlots = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            Constants.SecuredContainerSlot
+            Constants.SecuredContainerSlot,
+            Constants.PocketsSlot
         };
 
         foreach (var item in inventory.Items)

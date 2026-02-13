@@ -37,6 +37,9 @@ public static class AlgorithmConstants
     /// <summary>SecuredContainer slot name (always preserved)</summary>
     public const string SecuredContainerSlot = "SecuredContainer";
 
+    /// <summary>Pockets slot name (permanent item, always preserved)</summary>
+    public const string PocketsSlot = "Pockets";
+
     /// <summary>Maximum depth for parent chain traversal (cycle protection)</summary>
     public const int MaxParentTraversalDepth = 50;
 }
@@ -311,8 +314,10 @@ public static class RestorationAlgorithm
         HashSet<string> snapshotSlotIds,
         HashSet<string> emptySlotIds)
     {
-        // INVARIANT: SecuredContainer is NEVER managed for removal
-        if (string.Equals(slotId, AlgorithmConstants.SecuredContainerSlot, StringComparison.OrdinalIgnoreCase))
+        // INVARIANT: SecuredContainer and Pockets are NEVER managed for removal
+        // Both are permanent fixtures of the player's equipment.
+        if (string.Equals(slotId, AlgorithmConstants.SecuredContainerSlot, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(slotId, AlgorithmConstants.PocketsSlot, StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }
@@ -357,8 +362,9 @@ public static class RestorationAlgorithm
 
             var slotId = item.SlotId ?? "";
 
-            // INVARIANT: Never remove SecuredContainer
-            if (string.Equals(slotId, AlgorithmConstants.SecuredContainerSlot, StringComparison.OrdinalIgnoreCase))
+            // INVARIANT: Never remove SecuredContainer or Pockets
+            if (string.Equals(slotId, AlgorithmConstants.SecuredContainerSlot, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(slotId, AlgorithmConstants.PocketsSlot, StringComparison.OrdinalIgnoreCase))
                 continue;
 
             if (IsSlotManaged(slotId, slotSets.IncludedSlotIds, slotSets.SnapshotSlotIds, slotSets.EmptySlotIds))
