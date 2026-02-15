@@ -179,7 +179,7 @@ public class ProtectionIndicator : MonoBehaviour
         }
         catch (Exception ex)
         {
-            Plugin.Log.LogDebug($"[ProtectionIndicator] Error refreshing data: {ex.Message}");
+            Plugin.Log.LogWarning($"[ProtectionIndicator] Error refreshing data: {ex.Message}");
             _hasActiveSnapshot = false;
         }
     }

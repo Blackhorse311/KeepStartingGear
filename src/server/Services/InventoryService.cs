@@ -1855,9 +1855,8 @@ public class InventoryService
                 var itemType = item.GetType();
                 var templateId = item.TemplateId.ToString();
 
-                // Dogtag template IDs: BEAR dogtag = 59f32bb586f774757e1e8442, USEC dogtag = 59f32c3b86f77472a31742f0
-                bool isDogtag = templateId == "59f32bb586f774757e1e8442" ||
-                               templateId == "59f32c3b86f77472a31742f0" ||
+                bool isDogtag = templateId == TemplateIds.DogtagBear ||
+                               templateId == TemplateIds.DogtagUsec ||
                                itemType.Name.Contains("Dogtag");
 
                 if (isDogtag)

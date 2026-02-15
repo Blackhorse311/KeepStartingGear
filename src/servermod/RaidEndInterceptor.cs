@@ -208,6 +208,10 @@ public class RaidEndInterceptor(
         {
             logger.Error($"{Constants.LogPrefix} Error in EndLocalRaid interceptor: {ex.Message}");
             logger.Error($"{Constants.LogPrefix} Stack trace: {ex.StackTrace}");
+
+            // Clear any stale restoration state to prevent DeleteInventory from skipping deletion
+            // on a failed restoration attempt
+            SnapshotRestorationState.Clear(sessionID.ToString());
         }
 
         // Always call the base implementation to complete normal processing

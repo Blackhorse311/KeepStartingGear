@@ -74,6 +74,9 @@ public class SnapshotManager
     private static readonly Regex SessionIdValidator =
         new(@"^[a-zA-Z0-9\-_]+$", RegexOptions.Compiled);
 
+    /// <summary>Maximum file size for snapshot files (10MB).</summary>
+    private const long MaxSnapshotFileSize = 10 * 1024 * 1024;
+
     // ========================================================================
     // Singleton Pattern
     // ========================================================================
@@ -339,8 +342,6 @@ public class SnapshotManager
             }
 
             // HIGH-001 FIX: Check file size before reading to prevent DoS via large files
-            // Server-side SnapshotRestorer has this check, but client was missing it
-            const long MaxSnapshotFileSize = 10 * 1024 * 1024; // 10MB
             var fileInfo = new FileInfo(filePath);
             if (fileInfo.Length > MaxSnapshotFileSize)
             {
@@ -429,6 +430,14 @@ public class SnapshotManager
             }
 
             Plugin.Log.LogDebug($"Most recent snapshot file: {Path.GetFileName(mostRecentFile)}");
+
+            // File size check to prevent DoS via large files
+            var fileInfo = new FileInfo(mostRecentFile);
+            if (fileInfo.Length > MaxSnapshotFileSize)
+            {
+                Plugin.Log.LogWarning($"Snapshot file too large ({fileInfo.Length} bytes): {mostRecentFile}");
+                return null;
+            }
 
             // Load and return the snapshot from this file
             string jsonContent = File.ReadAllText(mostRecentFile);

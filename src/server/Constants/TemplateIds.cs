@@ -23,6 +23,16 @@ public static class TemplateIds
     public const string Equipment = "55d7217a4bdc2d86028b456d";
 
     /// <summary>
+    /// BEAR dogtag template ID. Used for dogtag metadata handling.
+    /// </summary>
+    public const string DogtagBear = "59f32bb586f774757e1e8442";
+
+    /// <summary>
+    /// USEC dogtag template ID. Used for dogtag metadata handling.
+    /// </summary>
+    public const string DogtagUsec = "59f32c3b86f77472a31742f0";
+
+    /// <summary>
     /// M-11 FIX: Maximum numeric slot ID for magazine/container slots.
     /// Magazine ammo slots and similar containers use numeric IDs (0, 1, 2, etc.).
     /// This limit is based on EFT's practical maximum - no magazine has 100+ slots.

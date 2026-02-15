@@ -19,6 +19,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using Blackhorse311.KeepStartingGear.Models;
 using Newtonsoft.Json;
 
@@ -51,6 +52,16 @@ public class LoadoutProfiles
 
     private readonly string _snapshotDirectory;
 
+    /// <summary>
+    /// Session ID validation regex - prevents path traversal attacks.
+    /// Only allows alphanumeric characters, hyphens, and underscores.
+    /// </summary>
+    private static readonly Regex SessionIdValidator =
+        new(@"^[a-zA-Z0-9\-_]+$", RegexOptions.Compiled);
+
+    /// <summary>Maximum file size for profile files (10MB).</summary>
+    private const long MaxProfileFileSize = 10 * 1024 * 1024;
+
     // ========================================================================
     // Constructor
     // ========================================================================
@@ -75,6 +86,9 @@ public class LoadoutProfiles
     {
         try
         {
+            if (!IsValidSessionId(sessionId))
+                return false;
+
             // Validate profile name
             profileName = SanitizeProfileName(profileName);
             if (string.IsNullOrEmpty(profileName))
@@ -99,7 +113,7 @@ public class LoadoutProfiles
                 return false;
             }
 
-            // Save as profile
+            // Save as profile using atomic write pattern to prevent corruption
             string profilePath = GetProfilePath(sessionId, profileName);
             var settings = new JsonSerializerSettings
             {
@@ -107,7 +121,22 @@ public class LoadoutProfiles
                 NullValueHandling = NullValueHandling.Include
             };
             string json = JsonConvert.SerializeObject(currentSnapshot, settings);
-            File.WriteAllText(profilePath, json);
+
+            // Atomic write: write to temp file then rename
+            string tempPath = profilePath + $".tmp.{Guid.NewGuid():N}";
+            try
+            {
+                File.WriteAllText(tempPath, json);
+                if (File.Exists(profilePath))
+                    File.Delete(profilePath);
+                File.Move(tempPath, profilePath);
+            }
+            finally
+            {
+                // Clean up temp file if it still exists (write failed before rename)
+                try { if (File.Exists(tempPath)) File.Delete(tempPath); }
+                catch { /* Best effort cleanup */ }
+            }
 
             Plugin.Log.LogDebug($"[LoadoutProfiles] Saved profile: {profileName}");
             return true;
@@ -129,12 +158,23 @@ public class LoadoutProfiles
     {
         try
         {
+            if (!IsValidSessionId(sessionId))
+                return false;
+
             profileName = SanitizeProfileName(profileName);
             string profilePath = GetProfilePath(sessionId, profileName);
 
             if (!File.Exists(profilePath))
             {
                 Plugin.Log.LogWarning($"[LoadoutProfiles] Profile not found: {profileName}");
+                return false;
+            }
+
+            // File size check to prevent DoS via large files
+            var fileInfo = new FileInfo(profilePath);
+            if (fileInfo.Length > MaxProfileFileSize)
+            {
+                Plugin.Log.LogWarning($"[LoadoutProfiles] Profile file too large ({fileInfo.Length} bytes)");
                 return false;
             }
 
@@ -185,6 +225,9 @@ public class LoadoutProfiles
 
         try
         {
+            if (!IsValidSessionId(sessionId))
+                return profiles;
+
             string pattern = $"{ProfilePrefix}*_{sessionId}.json";
             var files = Directory.GetFiles(_snapshotDirectory, pattern);
 
@@ -228,6 +271,9 @@ public class LoadoutProfiles
     {
         try
         {
+            if (!IsValidSessionId(sessionId))
+                return false;
+
             profileName = SanitizeProfileName(profileName);
             string profilePath = GetProfilePath(sessionId, profileName);
 
@@ -255,6 +301,9 @@ public class LoadoutProfiles
     {
         try
         {
+            if (!IsValidSessionId(sessionId))
+                return false;
+
             oldName = SanitizeProfileName(oldName);
             newName = SanitizeProfileName(newName);
 
@@ -297,6 +346,14 @@ public class LoadoutProfiles
     private string GetProfilePath(string sessionId, string profileName)
     {
         return Path.Combine(_snapshotDirectory, $"{ProfilePrefix}{profileName}_{sessionId}.json");
+    }
+
+    /// <summary>
+    /// Validates a session ID to prevent path traversal attacks.
+    /// </summary>
+    private static bool IsValidSessionId(string sessionId)
+    {
+        return !string.IsNullOrEmpty(sessionId) && SessionIdValidator.IsMatch(sessionId);
     }
 
     /// <summary>

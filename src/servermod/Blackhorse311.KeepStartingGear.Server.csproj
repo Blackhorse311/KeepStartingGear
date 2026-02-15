@@ -13,11 +13,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- SPT Server NuGet packages (4.0.11) -->
-    <PackageReference Include="SPTarkov.Common" Version="4.0.11" />
-    <PackageReference Include="SPTarkov.DI" Version="4.0.11" />
-    <PackageReference Include="SPTarkov.Server.Core" Version="4.0.11" />
-    <PackageReference Include="SPTarkov.Reflection" Version="4.0.11" />
+    <!-- SPT Server NuGet packages (4.0.12) -->
+    <PackageReference Include="SPTarkov.Common" Version="4.0.12" />
+    <PackageReference Include="SPTarkov.DI" Version="4.0.12" />
+    <PackageReference Include="SPTarkov.Server.Core" Version="4.0.12" />
+    <PackageReference Include="SPTarkov.Reflection" Version="4.0.12" />
   </ItemGroup>
 
   <!-- Copy output to SPT user/mods folder (only when SPT_PATH is set) -->

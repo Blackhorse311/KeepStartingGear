@@ -60,8 +60,7 @@ public static class PatchManager
     private static readonly HashSet<string> CriticalPatches = new(StringComparer.OrdinalIgnoreCase)
     {
         "RaidEndPatch",      // Required for gear restoration on death
-        "GameStartPatch",    // Required for raid start detection
-        "RaidExitPatch"      // Required for extraction handling
+        "GameStartPatch"     // Required for raid start detection
     };
 
     // ========================================================================

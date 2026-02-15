@@ -22,6 +22,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using Blackhorse311.KeepStartingGear.Configuration;
 using Blackhorse311.KeepStartingGear.Models;
 using Newtonsoft.Json;
@@ -52,6 +53,16 @@ public class SnapshotHistory
 
     private readonly string _snapshotDirectory;
 
+    /// <summary>
+    /// Session ID validation regex - prevents path traversal attacks.
+    /// Only allows alphanumeric characters, hyphens, and underscores.
+    /// </summary>
+    private static readonly Regex SessionIdValidator =
+        new(@"^[a-zA-Z0-9\-_]+$", RegexOptions.Compiled);
+
+    /// <summary>Maximum file size for snapshot files (10MB).</summary>
+    private const long MaxSnapshotFileSize = 10 * 1024 * 1024;
+
     // ========================================================================
     // Constructor
     // ========================================================================
@@ -81,6 +92,9 @@ public class SnapshotHistory
     {
         try
         {
+            if (!IsValidSessionId(sessionId))
+                return;
+
             int maxHistory = Settings.MaxSnapshotHistory?.Value ?? DefaultMaxHistory;
             if (maxHistory <= 0)
             {
@@ -168,6 +182,9 @@ public class SnapshotHistory
 
         try
         {
+            if (!IsValidSessionId(sessionId))
+                return history;
+
             int maxHistory = Settings.MaxSnapshotHistory?.Value ?? DefaultMaxHistory;
 
             // Check current snapshot
@@ -221,6 +238,9 @@ public class SnapshotHistory
     {
         try
         {
+            if (!IsValidSessionId(sessionId))
+                return false;
+
             if (historyIndex < 1)
             {
                 Plugin.Log.LogWarning("[SnapshotHistory] Cannot restore index 0 (already current)");
@@ -259,6 +279,9 @@ public class SnapshotHistory
     {
         try
         {
+            if (!IsValidSessionId(sessionId))
+                return;
+
             int maxHistory = Settings.MaxSnapshotHistory?.Value ?? DefaultMaxHistory;
 
             for (int i = 1; i < maxHistory; i++)
@@ -288,12 +311,23 @@ public class SnapshotHistory
     {
         try
         {
+            if (!IsValidSessionId(sessionId))
+                return null;
+
             string path = historyIndex == 0
                 ? GetSnapshotPath(sessionId)
                 : GetHistoryPath(sessionId, historyIndex);
 
             if (!File.Exists(path))
                 return null;
+
+            // File size check to prevent DoS via large files
+            var fileInfo = new FileInfo(path);
+            if (fileInfo.Length > MaxSnapshotFileSize)
+            {
+                Plugin.Log.LogWarning($"[SnapshotHistory] History file too large ({fileInfo.Length} bytes)");
+                return null;
+            }
 
             string json = File.ReadAllText(path);
             return JsonConvert.DeserializeObject<InventorySnapshot>(json);
@@ -306,8 +340,16 @@ public class SnapshotHistory
     }
 
     // ========================================================================
-    // Path Helpers
+    // Validation & Path Helpers
     // ========================================================================
+
+    /// <summary>
+    /// Validates a session ID to prevent path traversal attacks.
+    /// </summary>
+    private static bool IsValidSessionId(string sessionId)
+    {
+        return !string.IsNullOrEmpty(sessionId) && SessionIdValidator.IsMatch(sessionId);
+    }
 
     private string GetSnapshotPath(string sessionId)
     {

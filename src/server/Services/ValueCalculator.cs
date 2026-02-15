@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -43,8 +44,8 @@ public class ValueCalculator
     // State
     // ========================================================================
 
-    /// <summary>Cached item values by template ID.</summary>
-    private readonly Dictionary<string, long> _valueCache = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Cached item values by template ID. Thread-safe for Unity Update() access.</summary>
+    private readonly ConcurrentDictionary<string, long> _valueCache = new(StringComparer.OrdinalIgnoreCase);
 
     // ========================================================================
     // Constructor

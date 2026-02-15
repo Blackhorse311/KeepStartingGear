@@ -172,7 +172,7 @@ public static class SnapshotSoundPlayer
         }
         catch (Exception ex)
         {
-            Plugin.Log.LogDebug($"Could not initialize GUISounds: {ex.Message}");
+            Plugin.Log.LogWarning($"Could not initialize GUISounds: {ex.Message}");
         }
     }
 }

@@ -1024,6 +1024,12 @@ public class SnapshotRestorer<TLogger>
     {
         try
         {
+            if (string.IsNullOrEmpty(sessionId) || !IsValidSessionId(sessionId))
+            {
+                _logger.Warning($"{Constants.LogPrefix} ClearSnapshot called with invalid session ID");
+                return;
+            }
+
             var snapshotPath = Path.Combine(_snapshotsPath, $"{sessionId}.json");
             TryDeleteSnapshotFile(snapshotPath);
         }

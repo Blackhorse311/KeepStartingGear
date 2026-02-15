@@ -307,27 +307,42 @@ public class CustomInRaidHelper : InRaidHelper
     }
 
     /// <summary>
-    /// Recursively collects an item and all its children for deletion.
+    /// Collects an item and all its children for deletion using BFS.
+    /// Uses iterative traversal with a safety limit to prevent stack overflow
+    /// from deeply nested or cyclic item trees.
     /// </summary>
     private void CollectItemAndChildren(string itemId, List<SPTarkov.Server.Core.Models.Eft.Common.Tables.Item> items, HashSet<string> toRemove)
     {
-        // CRITICAL-003 FIX: Validate itemId before use to prevent null reference exceptions
         if (string.IsNullOrEmpty(itemId))
             return;
 
+        const int maxProcessed = 1000;
+        var queue = new Queue<string>();
+        queue.Enqueue(itemId);
         toRemove.Add(itemId);
+        int processed = 0;
 
-        // Find all children (items whose ParentId is this item)
-        foreach (var item in items)
+        while (queue.Count > 0 && processed < maxProcessed)
         {
-            // CRITICAL-003 FIX: Check item.Id for null BEFORE using it in Contains() or recursion
-            if (string.IsNullOrEmpty(item.Id))
-                continue;
+            var currentId = queue.Dequeue();
+            processed++;
 
-            if (item.ParentId == itemId && !toRemove.Contains(item.Id))
+            foreach (var item in items)
             {
-                CollectItemAndChildren(item.Id, items, toRemove);
+                if (string.IsNullOrEmpty(item.Id))
+                    continue;
+
+                if (item.ParentId == currentId && !toRemove.Contains(item.Id))
+                {
+                    toRemove.Add(item.Id);
+                    queue.Enqueue(item.Id);
+                }
             }
+        }
+
+        if (processed >= maxProcessed)
+        {
+            _logger.Warning($"{Constants.LogPrefix} CollectItemAndChildren hit safety limit ({maxProcessed}) for item {itemId}");
         }
     }
 }

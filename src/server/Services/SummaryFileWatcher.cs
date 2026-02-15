@@ -42,6 +42,9 @@ public class SummaryFileWatcher : MonoBehaviour
     /// <summary>Name of the summary file written by server.</summary>
     private const string SummaryFileName = "restoration_summary.json";
 
+    /// <summary>Maximum file size for summary files (10MB).</summary>
+    private const long MaxSummaryFileSize = 10 * 1024 * 1024;
+
     // ========================================================================
     // State
     // ========================================================================
@@ -97,6 +100,15 @@ public class SummaryFileWatcher : MonoBehaviour
         {
             if (!File.Exists(_summaryFilePath))
                 return;
+
+            // File size check to prevent DoS via large files
+            var fileInfo = new FileInfo(_summaryFilePath);
+            if (fileInfo.Length > MaxSummaryFileSize)
+            {
+                Plugin.Log.LogWarning($"[SummaryWatcher] Summary file too large ({fileInfo.Length} bytes), deleting");
+                File.Delete(_summaryFilePath);
+                return;
+            }
 
             // Read the summary file
             string json = File.ReadAllText(_summaryFilePath);

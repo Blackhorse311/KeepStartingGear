@@ -75,26 +75,16 @@ public class KeepStartingGearMod(ISptLogger<KeepStartingGearMod> logger) : IOnLo
     /// CustomInRaidHelper. This OnLoad method just provides user feedback
     /// that the server component loaded successfully.
     /// </remarks>
-    /// <summary>
-    /// Mod folder name - must match the folder name used in both server and client mod installations.
-    /// </summary>
-    private const string ModFolderName = "Blackhorse311-KeepStartingGear";
-
-    /// <summary>
-    /// Current mod version - must match ModMetadata.Version and client Plugin.PluginVersion
-    /// </summary>
-    private const string ModVersion = "2.0.5";
-
     public Task OnLoad()
     {
-        logger.Info("[KeepStartingGear-Server] ============================================");
-        logger.Info($"[KeepStartingGear-Server] Keep Starting Gear v{ModVersion} - Server Component");
-        logger.Info("[KeepStartingGear-Server] ============================================");
-        logger.Info("[KeepStartingGear-Server] Inventory restoration service ready.");
+        logger.Info($"{Constants.LogPrefix} ============================================");
+        logger.Info($"{Constants.LogPrefix} Keep Starting Gear v{Constants.ModVersion} - Server Component");
+        logger.Info($"{Constants.LogPrefix} ============================================");
+        logger.Info($"{Constants.LogPrefix} Inventory restoration service ready.");
 
         // Log the dynamically resolved snapshots path
         string snapshotsPath = ResolveSnapshotsPath();
-        logger.Info($"[KeepStartingGear-Server] Snapshots location: {snapshotsPath}");
+        logger.Info($"{Constants.LogPrefix} Snapshots location: {snapshotsPath}");
 
         // Check for known conflicting mods
         CheckForConflictingMods();
@@ -138,20 +128,20 @@ public class KeepStartingGearMod(ISptLogger<KeepStartingGearMod> logger) : IOnLo
                 {
                     if (normalizedFolderName.Contains(keyword))
                     {
-                        logger.Info($"[KeepStartingGear-Server] SVM (Server Value Modifier) detected: {System.IO.Path.GetFileName(directory)}");
-                        logger.Info("[KeepStartingGear-Server] Using Harmony patching for SVM compatibility.");
-                        logger.Info("[KeepStartingGear-Server] Note: If SVM's 'Save Gear After Death' is enabled,");
-                        logger.Info("[KeepStartingGear-Server]       it may override KeepStartingGear's selective restoration.");
+                        logger.Info($"{Constants.LogPrefix} SVM (Server Value Modifier) detected: {System.IO.Path.GetFileName(directory)}");
+                        logger.Info($"{Constants.LogPrefix} Using Harmony patching for SVM compatibility.");
+                        logger.Info($"{Constants.LogPrefix} Note: If SVM's 'Save Gear After Death' is enabled,");
+                        logger.Info($"{Constants.LogPrefix}       it may override KeepStartingGear's selective restoration.");
                         return;
                     }
                 }
             }
 
-            logger.Info("[KeepStartingGear-Server] SVM not detected - using standard restoration flow.");
+            logger.Info($"{Constants.LogPrefix} SVM not detected - using standard restoration flow.");
         }
         catch (Exception ex)
         {
-            logger.Debug($"[KeepStartingGear-Server] Could not check for conflicting mods: {ex.Message}");
+            logger.Debug($"{Constants.LogPrefix} Could not check for conflicting mods: {ex.Message}");
         }
     }
 
@@ -180,7 +170,7 @@ public class KeepStartingGearMod(ISptLogger<KeepStartingGearMod> logger) : IOnLo
 
             // Construct the BepInEx snapshots path
             // {SPT_ROOT}\BepInEx\plugins\{ModFolder}\snapshots\
-            return System.IO.Path.Combine(sptRoot, "BepInEx", "plugins", ModFolderName, "snapshots");
+            return System.IO.Path.Combine(sptRoot, "BepInEx", "plugins", Constants.ModFolderName, "snapshots");
         }
         catch (Exception ex)
         {

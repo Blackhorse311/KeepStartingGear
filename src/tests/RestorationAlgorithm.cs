@@ -40,8 +40,9 @@ public static class AlgorithmConstants
     /// <summary>Pockets slot name (permanent item, always preserved)</summary>
     public const string PocketsSlot = "Pockets";
 
-    /// <summary>Maximum depth for parent chain traversal (cycle protection)</summary>
-    public const int MaxParentTraversalDepth = 50;
+    /// <summary>Maximum depth for parent chain traversal (cycle protection).
+    /// Must match production value in Constants.MaxParentTraversalDepth.</summary>
+    public const int MaxParentTraversalDepth = 20;
 }
 
 /// <summary>

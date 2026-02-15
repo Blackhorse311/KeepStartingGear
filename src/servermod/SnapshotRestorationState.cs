@@ -102,6 +102,11 @@ public static class SnapshotRestorationState
     /// </summary>
     private static readonly TimeSpan StaleEntryTimeout = TimeSpan.FromMinutes(5);
 
+    /// <summary>
+    /// Tracks when we last ran stale entry cleanup to avoid running it on every call.
+    /// </summary>
+    private static DateTime _lastCleanupTime = DateTime.UtcNow;
+
     // ========================================================================
     // Public API
     // ========================================================================
@@ -176,11 +181,17 @@ public static class SnapshotRestorationState
 
     /// <summary>
     /// Removes entries older than StaleEntryTimeout to prevent memory leaks.
-    /// Called opportunistically during MarkRestored.
+    /// Called opportunistically during MarkRestored, rate-limited to once per minute.
     /// </summary>
     private static void CleanStaleEntries()
     {
-        var cutoff = DateTime.UtcNow - StaleEntryTimeout;
+        var now = DateTime.UtcNow;
+        if ((now - _lastCleanupTime).TotalMinutes < 1)
+            return;
+
+        _lastCleanupTime = now;
+
+        var cutoff = now - StaleEntryTimeout;
         foreach (var kvp in _restorationStates)
         {
             if (kvp.Value.CreatedAt < cutoff)

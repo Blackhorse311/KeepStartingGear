@@ -23,7 +23,7 @@ This ADR documents the formal invariants that the restoration algorithm MUST uph
 
 ## Decision
 
-We establish **5 inviolable invariants** for the restoration algorithm:
+We establish **6 inviolable invariants** for the restoration algorithm:
 
 ### INVARIANT 1: Equipment Container Preservation
 
@@ -51,7 +51,7 @@ Assert.False(IsSlotManaged("SecuredContainer", anyIncludedSlots, anySnapshotSlot
 
 ### INVARIANT 3: Parent Chain Termination
 
-**Statement:** All parent chain traversals MUST terminate within `MaxParentTraversalDepth` (50) iterations.
+**Statement:** All parent chain traversals MUST terminate within `MaxParentTraversalDepth` (20) iterations.
 
 **Rationale:** Corrupt snapshot data could contain circular parent references. Without cycle detection, restoration would hang indefinitely.
 
@@ -92,6 +92,20 @@ var items = new[] {
     AlgorithmItem.Create("eq2", tpl: EquipmentTemplateId)
 };
 Assert.Equal(2, FindAllEquipmentContainerIds(items).Count);
+```
+
+### INVARIANT 6: Pockets Slot Protection
+
+**Statement:** The `Pockets` item is NEVER removed during restoration, regardless of configuration.
+
+**Rationale:** Like SecuredContainer, Pockets is a permanent fixture of the player's Equipment. Deleting the Pockets item permanently corrupts the profile (empty rig slot, no pocket slots). This was discovered in v2.0.5 when users reported permanent pocket corruption after death. Both `DeleteNonManagedSlotItems` and `RemoveManagedSlotItems` must skip Pockets.
+
+**Verification:**
+```csharp
+// Pockets item must survive restoration regardless of slot configuration
+var profileItems = CreateProfileWithPockets();
+SimulateRestoration(profileItems, snapshot, managedSlots);
+Assert.Contains(profileItems, i => i.SlotId == "Pockets");
 ```
 
 ## Algorithm Flow

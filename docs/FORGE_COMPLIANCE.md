@@ -1,8 +1,8 @@
 # SPT Forge Compliance Statement
 
-**Keep Starting Gear v2.0.0**
+**Keep Starting Gear v2.0.5**
 **Author:** Blackhorse311
-**Last Updated:** 2026-01-30
+**Last Updated:** 2026-02-15
 
 This document demonstrates how Keep Starting Gear meets or exceeds every requirement in the [SPT Forge Content Guidelines](https://forge.sp-tarkov.com/content-guidelines) and [Community Standards](https://forge.sp-tarkov.com/community-standards).
 
