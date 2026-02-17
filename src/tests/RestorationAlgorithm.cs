@@ -11,10 +11,11 @@
 //
 // INVARIANTS:
 // 1. Equipment container is never removed
-// 2. SecuredContainer slot is always preserved
-// 3. Items are traced to their root slot via parent chain
-// 4. Cycle detection prevents infinite loops
-// 5. Legacy snapshots (null IncludedSlots) use fallback logic
+// 2. SecuredContainer and Pockets containers are always preserved (never deleted)
+// 3. SecuredContainer/Pockets CONTENTS are managed when the slot is in IncludedSlots
+// 4. Items are traced to their root slot via parent chain
+// 5. Cycle detection prevents infinite loops
+// 6. Legacy snapshots (null IncludedSlots) use fallback logic
 //
 // AUTHOR: Blackhorse311 + Linus Torvalds
 // LICENSE: MIT
@@ -300,9 +301,11 @@ public static class RestorationAlgorithm
     // ========================================================================
 
     /// <summary>
-    /// Determines if a slot is managed by the mod.
+    /// Determines if a slot's contents are managed by the mod.
     ///
-    /// INVARIANT: SecuredContainer is NEVER managed for removal.
+    /// NOTE: This answers "should the contents be restored from snapshot?"
+    /// Container preservation (SecuredContainer/Pockets never deleted) is handled
+    /// separately in CollectItemsToRemove.
     ///
     /// Rules:
     /// - null includedSlotIds = legacy format, check snapshotSlotIds OR emptySlotIds
@@ -315,14 +318,6 @@ public static class RestorationAlgorithm
         HashSet<string> snapshotSlotIds,
         HashSet<string> emptySlotIds)
     {
-        // INVARIANT: SecuredContainer and Pockets are NEVER managed for removal
-        // Both are permanent fixtures of the player's equipment.
-        if (string.Equals(slotId, AlgorithmConstants.SecuredContainerSlot, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(slotId, AlgorithmConstants.PocketsSlot, StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
         // Modern format: includedSlotIds is authoritative
         if (includedSlotIds != null)
         {
@@ -343,7 +338,8 @@ public static class RestorationAlgorithm
     /// Uses BFS to find all nested items.
     ///
     /// INVARIANT: Equipment container itself is never in the result.
-    /// INVARIANT: SecuredContainer slot items are never in the result.
+    /// INVARIANT: SecuredContainer and Pockets containers are never in the result.
+    /// Their contents ARE removed when the slot is managed.
     /// </summary>
     public static HashSet<string> CollectItemsToRemove(
         List<AlgorithmItem> items,
@@ -351,6 +347,9 @@ public static class RestorationAlgorithm
         SlotSets slotSets)
     {
         var toRemove = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // Track permanent containers whose contents should be managed
+        var preservedManagedContainerIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         // Find direct children of Equipment that are in managed slots
         foreach (var item in items)
@@ -363,10 +362,17 @@ public static class RestorationAlgorithm
 
             var slotId = item.SlotId ?? "";
 
-            // INVARIANT: Never remove SecuredContainer or Pockets
+            // Permanent containers: never delete the container itself, but manage contents
             if (string.Equals(slotId, AlgorithmConstants.SecuredContainerSlot, StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(slotId, AlgorithmConstants.PocketsSlot, StringComparison.OrdinalIgnoreCase))
-                continue;
+            {
+                // If slot is managed, mark container for content removal
+                if (IsSlotManaged(slotId, slotSets.IncludedSlotIds, slotSets.SnapshotSlotIds, slotSets.EmptySlotIds))
+                {
+                    preservedManagedContainerIds.Add(item.Id);
+                }
+                continue; // Container itself never added to removal set
+            }
 
             if (IsSlotManaged(slotId, slotSets.IncludedSlotIds, slotSets.SnapshotSlotIds, slotSets.EmptySlotIds))
             {
@@ -387,6 +393,21 @@ public static class RestorationAlgorithm
                 childrenByParent[item.ParentId] = children;
             }
             children.Add(item.Id);
+        }
+
+        // Seed with children of preserved managed containers
+        foreach (var containerId in preservedManagedContainerIds)
+        {
+            if (childrenByParent.TryGetValue(containerId, out var containerChildren))
+            {
+                foreach (var childId in containerChildren)
+                {
+                    if (!toRemove.Contains(childId))
+                    {
+                        toRemove.Add(childId);
+                    }
+                }
+            }
         }
 
         var queue = new Queue<string>(toRemove);

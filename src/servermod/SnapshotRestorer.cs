@@ -606,6 +606,10 @@ public class SnapshotRestorer<TLogger>
     {
         var equipmentItemIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+        // Track permanent containers (SecuredContainer, Pockets) whose contents should be managed.
+        // These containers are NEVER deleted, but their contents are removed and restored from snapshot.
+        var preservedManagedContainerIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         // Find ALL Equipment container IDs to handle edge cases where items
         // may be parented to different Equipment containers (e.g., raid-end state
         // vs snapshot Equipment IDs)
@@ -635,28 +639,25 @@ public class SnapshotRestorer<TLogger>
 
             var slotId = item.SlotId ?? "";
 
-            // ADR-003 INVARIANT 2: NEVER remove the SecuredContainer itself
-            // The container must always exist; we can clear/restore its contents but not delete it
-            // MEDIUM-002 FIX: Use shared constant from Constants class
-            if (string.Equals(slotId, Constants.SecuredContainerSlot, StringComparison.OrdinalIgnoreCase))
+            // PERMANENT CONTAINERS: SecuredContainer and Pockets are permanent fixtures of
+            // the player's Equipment. Deleting them corrupts the profile. The container ITEM
+            // is never removed, but if the slot is managed, its CONTENTS are removed and
+            // restored from the snapshot.
+            if (string.Equals(slotId, Constants.SecuredContainerSlot, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(slotId, Constants.PocketsSlot, StringComparison.OrdinalIgnoreCase))
             {
-                _logger.Debug($"{Constants.LogPrefix} PRESERVING SecuredContainer slot (container always kept, contents may be managed separately)");
+                _logger.Debug($"{Constants.LogPrefix} PRESERVING {slotId} container (permanent item, never deleted)");
 
-                // This is the critical invariant - SecuredContainer slot is NEVER managed for removal
-                Debug.Assert(!IsSlotManaged(slotId, includedSlotIds, snapshotSlotIds, emptySlotIds) ||
-                             string.Equals(slotId, Constants.SecuredContainerSlot, StringComparison.OrdinalIgnoreCase),
-                    "[KeepStartingGear] INVARIANT VIOLATION: SecuredContainer should never pass IsSlotManaged");
+                // If this slot is managed, its contents should be removed and restored from snapshot
+                bool contentIsManaged = IsSlotManaged(slotId, includedSlotIds, snapshotSlotIds, emptySlotIds);
+                if (contentIsManaged && !string.IsNullOrEmpty(item.Id))
+                {
+                    preservedManagedContainerIds.Add(item.Id);
+                    _logger.Debug($"{Constants.LogPrefix} {slotId} contents will be removed and restored from snapshot");
+                    LogRemovalReason(slotId, item.Template, snapshotSlotIds, emptySlotIds);
+                }
 
-                continue;
-            }
-
-            // INVARIANT: NEVER remove the Pockets item itself
-            // Pockets is a permanent fixture of the player's equipment, like SecuredContainer.
-            // Deleting it permanently corrupts the profile (pockets cannot be re-created).
-            if (string.Equals(slotId, Constants.PocketsSlot, StringComparison.OrdinalIgnoreCase))
-            {
-                _logger.Debug($"{Constants.LogPrefix} PRESERVING Pockets slot (permanent item, never deleted)");
-                continue;
+                continue; // Container itself is NEVER in the removal set
             }
 
             bool slotIsManaged = IsSlotManaged(slotId, includedSlotIds, snapshotSlotIds, emptySlotIds);
@@ -685,6 +686,23 @@ public class SnapshotRestorer<TLogger>
                 childrenByParent[item.ParentId] = children;
             }
             children.Add(item.Id);
+        }
+
+        // Seed BFS with children of preserved managed containers (e.g., items inside
+        // Pockets or SecuredContainer when the slot is managed). The container itself
+        // stays out of the removal set, but its contents are removed for restoration.
+        foreach (var containerId in preservedManagedContainerIds)
+        {
+            if (childrenByParent.TryGetValue(containerId, out var containerChildren))
+            {
+                foreach (var childId in containerChildren)
+                {
+                    if (!equipmentItemIds.Contains(childId))
+                    {
+                        equipmentItemIds.Add(childId);
+                    }
+                }
+            }
         }
 
         // BFS traversal to find all nested items - O(n) total
@@ -719,8 +737,8 @@ public class SnapshotRestorer<TLogger>
         Debug.Assert(!allEquipmentIds.Overlaps(equipmentItemIds),
             "[KeepStartingGear] INVARIANT VIOLATION: Equipment container marked for removal!");
 
-        // ADR-003 INVARIANT 2: SecuredContainer slot items should not be removed
-        // (This is enforced earlier, but verify no SecuredContainer items slipped through)
+        // ADR-003 INVARIANT 2: Permanent container ITEMS are never in the removal set
+        // (SecuredContainer and Pockets containers are preserved; their contents may be removed)
 
         // LOG-003: Validate item.Id in RemoveAll predicate
         int removedCount = items.RemoveAll(item => !string.IsNullOrEmpty(item.Id) && equipmentItemIds.Contains(item.Id));

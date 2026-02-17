@@ -258,15 +258,6 @@ public class CustomInRaidHelper : InRaidHelper
         // Build a set of item IDs to remove (items in non-managed equipment slots)
         var itemsToRemove = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        // Slots that are NEVER deleted on death in normal Tarkov
-        // SecuredContainer and Pockets are permanent fixtures - deleting them corrupts the profile
-        // MEDIUM-002 FIX: Use shared constants from Constants class
-        var alwaysPreservedSlots = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            Constants.SecuredContainerSlot,
-            Constants.PocketsSlot
-        };
-
         foreach (var item in inventory.Items)
         {
             // Skip if not directly in ANY Equipment container
@@ -278,14 +269,36 @@ public class CustomInRaidHelper : InRaidHelper
             if (string.IsNullOrEmpty(slotId))
                 continue;
 
-            // NEVER delete SecuredContainer - it's always preserved in normal Tarkov
-            if (alwaysPreservedSlots.Contains(slotId))
+            // SecuredContainer: ALWAYS preserve container AND contents (normal Tarkov behavior)
+            if (string.Equals(slotId, Constants.SecuredContainerSlot, StringComparison.OrdinalIgnoreCase))
             {
-                _logger.Debug($"{Constants.LogPrefix} Preserving '{slotId}' (always kept in normal Tarkov)");
+                _logger.Debug($"{Constants.LogPrefix} Preserving SecuredContainer and contents (always kept in normal Tarkov)");
                 continue;
             }
 
-            // If this slot is NOT managed, mark the item and all children for deletion
+            // Pockets: ALWAYS preserve the container (permanent item), contents follow death mechanics
+            if (string.Equals(slotId, Constants.PocketsSlot, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.Debug($"{Constants.LogPrefix} Preserving Pockets container (permanent item)");
+                // If Pockets is NOT managed, delete contents (normal death = pocket contents lost)
+                if (!managedSlotIds.Contains(slotId) && !string.IsNullOrEmpty(item.Id))
+                {
+                    _logger.Debug($"{Constants.LogPrefix} Deleting Pockets contents (non-managed slot, normal death)");
+                    var pocketsId = item.Id;
+                    for (int i = 0; i < inventory.Items.Count; i++)
+                    {
+                        var child = inventory.Items[i];
+                        if (child.ParentId == pocketsId && !string.IsNullOrEmpty(child.Id))
+                        {
+                            CollectItemAndChildren(child.Id, inventory.Items, itemsToRemove);
+                        }
+                    }
+                }
+                // If managed, contents were restored from snapshot - preserve them
+                continue;
+            }
+
+            // Normal slot: if NOT managed, mark the item and all children for deletion
             if (!managedSlotIds.Contains(slotId))
             {
                 _logger.Debug($"{Constants.LogPrefix} Deleting item in non-managed slot '{slotId}': {item.Id}");

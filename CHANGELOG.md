@@ -5,6 +5,51 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.6] - 2026-02-16
+
+### Fixed - Pockets Contents Not Restored From Snapshot
+
+This release fixes a regression introduced in v2.0.5 where Pockets contents kept their raid-end state instead of being restored from the snapshot on death.
+
+#### Pockets Contents Not Managed (HIGH)
+
+**Problem:** The v2.0.5 Pockets protection was too aggressive. When we added code to prevent the Pockets container from being deleted (which corrupts profiles), we skipped the container AND all its contents from the removal phase. This meant items inside Pockets were never removed during restoration, so snapshot items (with original state) were skipped as duplicates.
+
+**Symptoms:**
+- Medical items in pockets not restored to snapshot state (e.g., used Calok stays at 2 uses instead of full)
+- Items looted during raid and placed in pockets stay after death
+- Issue localized to Pockets slot only
+
+**Fix:** Separated container preservation from content management. Permanent containers (SecuredContainer, Pockets) are still never deleted, but their CONTENTS are now properly removed and restored from snapshot when the slot is managed. Added `preservedManagedContainerIds` set to track containers whose children should be seeded into the BFS removal queue.
+
+**Files:** `src/servermod/SnapshotRestorer.cs`, `src/servermod/CustomInRaidHelper.cs`
+
+#### Secondary Fix: Pockets Death Mechanics in Partial Deletion
+
+**Problem:** In `DeleteNonManagedSlotItems` (partial death processing), Pockets was treated identically to SecuredContainer - both container and contents were always preserved. But in normal Tarkov, SecuredContainer contents survive death while Pockets contents are lost. When Pockets was not a managed slot, its contents should have been deleted.
+
+**Fix:** SecuredContainer preserves container + contents (normal Tarkov). Pockets preserves container but deletes contents when not managed (normal death behavior).
+
+**File:** `src/servermod/CustomInRaidHelper.cs`
+
+### Technical
+
+- New pattern: `preservedManagedContainerIds` tracks permanent containers whose children enter the BFS removal queue
+- `IsSlotManaged` in test algorithm no longer special-cases SC/Pockets (content management is separate from container preservation)
+- Updated `CollectItemsToRemove` in test algorithm with same pattern as production code
+- Updated 4 existing tests, added 2 new tests (46 total: 10 serialization + 36 restoration algorithm)
+- All fixes are server-side only; client DLL unchanged
+
+### Contributors
+
+- **@UVCatastrophe** - Reported pockets contents not restoring from snapshot on Forge
+
+### Compatibility
+
+- SPT 4.0.x (tested on 4.0.11)
+
+---
+
 ## [2.0.5] - 2026-02-13
 
 ### Fixed - Critical Gear Loss, Secure Container & Pockets Corruption

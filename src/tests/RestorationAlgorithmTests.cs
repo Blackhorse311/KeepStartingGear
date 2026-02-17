@@ -285,14 +285,15 @@ public class TraceRootSlotTests
 
 /// <summary>
 /// Tests for IsSlotManaged.
-/// INVARIANT: SecuredContainer is NEVER managed. Handles all three IncludedSlotIds states.
+/// IsSlotManaged answers "should this slot's contents be managed (restored from snapshot)?"
+/// Container preservation (SC/Pockets never deleted) is handled separately in CollectItemsToRemove.
 /// </summary>
 public class IsSlotManagedTests
 {
     [Fact]
-    public void ReturnsFalse_ForSecuredContainer_Always()
+    public void ReturnsTrue_ForSecuredContainer_WhenInIncludedSlots()
     {
-        // Arrange - SecuredContainer should NEVER be managed regardless of settings
+        // Arrange - SC contents are managed when the slot is in includedSlotIds
         var includedSlots = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "SecuredContainer" };
         var snapshotSlots = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "SecuredContainer" };
         var emptySlots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -300,12 +301,12 @@ public class IsSlotManagedTests
         // Act
         var result = RestorationAlgorithm.IsSlotManaged("SecuredContainer", includedSlots, snapshotSlots, emptySlots);
 
-        // Assert - INVARIANT: SecuredContainer is NEVER managed
-        Assert.False(result);
+        // Assert - SC contents are managed (container preservation is separate)
+        Assert.True(result);
     }
 
     [Fact]
-    public void ReturnsFalse_ForSecuredContainer_CaseInsensitive()
+    public void ReturnsTrue_ForSecuredContainer_CaseInsensitive()
     {
         // Arrange
         var includedSlots = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "SECUREDCONTAINER" };
@@ -316,13 +317,13 @@ public class IsSlotManagedTests
         var result = RestorationAlgorithm.IsSlotManaged("securedcontainer", includedSlots, snapshotSlots, emptySlots);
 
         // Assert
-        Assert.False(result);
+        Assert.True(result);
     }
 
     [Fact]
-    public void ReturnsFalse_ForPockets_Always()
+    public void ReturnsTrue_ForPockets_WhenInIncludedSlots()
     {
-        // Arrange - Pockets should NEVER be managed regardless of settings
+        // Arrange - Pockets contents are managed when the slot is in includedSlotIds
         var includedSlots = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Pockets" };
         var snapshotSlots = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Pockets" };
         var emptySlots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -330,12 +331,12 @@ public class IsSlotManagedTests
         // Act
         var result = RestorationAlgorithm.IsSlotManaged("Pockets", includedSlots, snapshotSlots, emptySlots);
 
-        // Assert - INVARIANT: Pockets is NEVER managed (it's a permanent item)
-        Assert.False(result);
+        // Assert - Pockets contents are managed (container preservation is separate)
+        Assert.True(result);
     }
 
     [Fact]
-    public void ReturnsFalse_ForPockets_CaseInsensitive()
+    public void ReturnsTrue_ForPockets_CaseInsensitive()
     {
         // Arrange
         var includedSlots = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "POCKETS" };
@@ -346,7 +347,7 @@ public class IsSlotManagedTests
         var result = RestorationAlgorithm.IsSlotManaged("pockets", includedSlots, snapshotSlots, emptySlots);
 
         // Assert
-        Assert.False(result);
+        Assert.True(result);
     }
 
     [Fact]
@@ -460,9 +461,9 @@ public class SimulateRestorationTests
     }
 
     [Fact]
-    public void PreservesSecuredContainer_Always()
+    public void PreservesSecuredContainerContainer_WhenManaged()
     {
-        // Arrange - SecuredContainer should NEVER be removed
+        // Arrange - SC container preserved, contents managed when slot is managed
         var profileItems = new List<AlgorithmItem>
         {
             AlgorithmItem.Create(_equipmentId, tpl: AlgorithmConstants.EquipmentTemplateId),
@@ -473,7 +474,7 @@ public class SimulateRestorationTests
         var snapshotItems = new List<AlgorithmItem>
         {
             AlgorithmItem.Create("snapshot-equipment", tpl: AlgorithmConstants.EquipmentTemplateId)
-            // Empty snapshot - no SecuredContainer
+            // Empty snapshot - no SecuredContainer items
         };
 
         var includedSlots = new List<string> { "SecuredContainer" };
@@ -481,16 +482,16 @@ public class SimulateRestorationTests
         // Act
         var result = RestorationAlgorithm.SimulateRestoration(profileItems, snapshotItems, includedSlots, null);
 
-        // Assert - SecuredContainer should still exist
+        // Assert - Container preserved, contents removed (no snapshot items to restore)
         Assert.True(result.Success);
-        Assert.Contains(profileItems, i => i.Id == "gamma");
-        Assert.Contains(profileItems, i => i.Id == "item-in-gamma");
+        Assert.Contains(profileItems, i => i.Id == "gamma"); // Container always preserved
+        Assert.DoesNotContain(profileItems, i => i.Id == "item-in-gamma"); // Contents managed
     }
 
     [Fact]
-    public void PreservesPockets_Always()
+    public void PreservesPocketsContainer_WhenManaged()
     {
-        // Arrange - Pockets should NEVER be removed, like SecuredContainer
+        // Arrange - Pockets container preserved, contents managed when slot is managed
         var profileItems = new List<AlgorithmItem>
         {
             AlgorithmItem.Create(_equipmentId, tpl: AlgorithmConstants.EquipmentTemplateId),
@@ -501,7 +502,7 @@ public class SimulateRestorationTests
         var snapshotItems = new List<AlgorithmItem>
         {
             AlgorithmItem.Create("snapshot-equipment", tpl: AlgorithmConstants.EquipmentTemplateId)
-            // Empty snapshot - no Pockets
+            // Empty snapshot - no Pockets items
         };
 
         var includedSlots = new List<string> { "Pockets" };
@@ -509,10 +510,76 @@ public class SimulateRestorationTests
         // Act
         var result = RestorationAlgorithm.SimulateRestoration(profileItems, snapshotItems, includedSlots, null);
 
-        // Assert - Pockets should still exist (permanent item, never deleted)
+        // Assert - Container preserved, contents removed (no snapshot items to restore)
         Assert.True(result.Success);
-        Assert.Contains(profileItems, i => i.Id == "pockets-item");
-        Assert.Contains(profileItems, i => i.Id == "item-in-pockets");
+        Assert.Contains(profileItems, i => i.Id == "pockets-item"); // Container always preserved
+        Assert.DoesNotContain(profileItems, i => i.Id == "item-in-pockets"); // Contents managed
+    }
+
+    [Fact]
+    public void RestoresPocketsContents_FromSnapshot()
+    {
+        // Arrange - Pockets contents should be replaced with snapshot contents
+        // This is the exact scenario reported by the user: medkit used during raid
+        // should be restored to snapshot state (full uses)
+        var profileItems = new List<AlgorithmItem>
+        {
+            AlgorithmItem.Create(_equipmentId, tpl: AlgorithmConstants.EquipmentTemplateId),
+            AlgorithmItem.Create("pockets-item", parentId: _equipmentId, slotId: "Pockets", tpl: "pockets-tpl"),
+            AlgorithmItem.Create("used-medkit", parentId: "pockets-item", slotId: "pocket1"),
+            AlgorithmItem.Create("looted-item", parentId: "pockets-item", slotId: "pocket2") // Picked up during raid
+        };
+
+        var snapshotItems = new List<AlgorithmItem>
+        {
+            AlgorithmItem.Create("snapshot-equipment", tpl: AlgorithmConstants.EquipmentTemplateId),
+            AlgorithmItem.Create("pockets-item", parentId: "snapshot-equipment", slotId: "Pockets", tpl: "pockets-tpl"),
+            AlgorithmItem.Create("used-medkit", parentId: "pockets-item", slotId: "pocket1") // Full medkit in snapshot
+            // No "looted-item" in snapshot (it was picked up during raid)
+        };
+
+        var includedSlots = new List<string> { "Pockets" };
+
+        // Act
+        var result = RestorationAlgorithm.SimulateRestoration(profileItems, snapshotItems, includedSlots, null);
+
+        // Assert
+        Assert.True(result.Success);
+        Assert.Contains(profileItems, i => i.Id == "pockets-item"); // Container preserved
+        Assert.Contains(profileItems, i => i.Id == "used-medkit"); // Restored from snapshot (with original state)
+        Assert.DoesNotContain(profileItems, i => i.Id == "looted-item"); // Looted item removed
+    }
+
+    [Fact]
+    public void PreservesPocketsContents_WhenNotManaged()
+    {
+        // Arrange - When Pockets is NOT in includedSlots, contents should be left alone
+        var profileItems = new List<AlgorithmItem>
+        {
+            AlgorithmItem.Create(_equipmentId, tpl: AlgorithmConstants.EquipmentTemplateId),
+            AlgorithmItem.Create("pockets-item", parentId: _equipmentId, slotId: "Pockets", tpl: "pockets-tpl"),
+            AlgorithmItem.Create("item-in-pockets", parentId: "pockets-item", slotId: "pocket1"),
+            AlgorithmItem.Create("weapon", parentId: _equipmentId, slotId: "FirstPrimaryWeapon")
+        };
+
+        var snapshotItems = new List<AlgorithmItem>
+        {
+            AlgorithmItem.Create("snapshot-equipment", tpl: AlgorithmConstants.EquipmentTemplateId),
+            AlgorithmItem.Create("snapshot-weapon", parentId: "snapshot-equipment", slotId: "FirstPrimaryWeapon")
+        };
+
+        // Only weapon is managed, Pockets is NOT
+        var includedSlots = new List<string> { "FirstPrimaryWeapon" };
+
+        // Act
+        var result = RestorationAlgorithm.SimulateRestoration(profileItems, snapshotItems, includedSlots, null);
+
+        // Assert - Pockets untouched (not managed), weapon restored
+        Assert.True(result.Success);
+        Assert.Contains(profileItems, i => i.Id == "pockets-item"); // Container preserved
+        Assert.Contains(profileItems, i => i.Id == "item-in-pockets"); // Contents preserved (not managed)
+        Assert.DoesNotContain(profileItems, i => i.Id == "weapon"); // Weapon removed
+        Assert.Contains(profileItems, i => i.Id == "snapshot-weapon"); // Weapon restored
     }
 
     [Fact]
