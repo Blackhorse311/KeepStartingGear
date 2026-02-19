@@ -19,7 +19,7 @@ public static class Constants
     /// Current mod version. Update this for each release.
     /// Must match ModMetadata.Version and client Plugin.PluginVersion.
     /// </summary>
-    public const string ModVersion = "2.0.6";
+    public const string ModVersion = "2.0.7";
 
     /// <summary>
     /// Equipment container template ID - identifies the root equipment container.
@@ -55,4 +55,10 @@ public static class Constants
     /// Deleting the Pockets item permanently corrupts the player's profile.
     /// </summary>
     public const string PocketsSlot = "Pockets";
+
+    /// <summary>
+    /// Scabbard slot name. In normal Tarkov, melee weapons are never lost on death.
+    /// The Scabbard item should always be preserved regardless of slot management settings.
+    /// </summary>
+    public const string ScabbardSlot = "Scabbard";
 }

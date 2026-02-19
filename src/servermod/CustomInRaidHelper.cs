@@ -1,31 +1,31 @@
 // ============================================================================
 // Keep Starting Gear - Custom In-Raid Helper
 // ============================================================================
-// This class overrides SPT's InRaidHelper to conditionally skip inventory
-// deletion when inventory has been restored from a snapshot.
+// This class overrides SPT's InRaidHelper to handle snapshot restoration
+// and selective inventory deletion on death.
 //
-// SPT'S NORMAL BEHAVIOR:
-// When a player dies in raid, SPT's InRaidHelper.DeleteInventory() is called
-// to remove all equipment from the player's profile. This is the "death penalty."
+// SPT'S DEATH PROCESSING PIPELINE (HandlePostRaidPmc):
+//   1. SetInventory() - copies post-raid items to server profile
+//   2. Stats/quests/XP updates
+//   3. DeleteInventory() - removes equipment items (death penalty)
+//   4. SaveProfileAsync() - persists final state
 //
-// OUR MODIFICATION:
-// We override DeleteInventory() to check SnapshotRestorationState first.
-// If inventory was just restored from a snapshot, we skip the deletion to
-// preserve the restored items.
+// TWO-PHASE RESTORATION:
+// Phase 1 (SetInventory override): If a snapshot file exists, restore items
+// into the postRaidProfile BEFORE base.SetInventory copies them to the server
+// profile. This is the primary restoration path for SVM compatibility, where
+// RaidEndInterceptor may not run.
 //
-// DEPENDENCY INJECTION:
-// The [Injectable] attribute with InjectionType.Scoped tells SPT to use
-// this class instead of the default InRaidHelper. The typeof(InRaidHelper)
-// parameter specifies which service we're replacing.
+// Phase 2 (DeleteInventory override): Check SnapshotRestorationState to
+// determine which slots are managed. Preserve managed slots (restored from
+// snapshot) and delete items from non-managed slots (normal death penalty).
 //
-// WHY THIS APPROACH?
-// - We can't hook DeleteInventory via a patch because it's called internally
-// - Replacing the entire service allows complete control over behavior
-// - We still call base methods for non-restoration cases (normal behavior)
-//
-// REFACTORED:
-// Restoration logic has been extracted to SnapshotRestorer class to eliminate
-// code duplication with RaidEndInterceptor.
+// COORDINATION:
+// The snapshot file acts as the coordination mechanism between components:
+// - If RaidEndInterceptor ran: it already restored and deleted the snapshot
+//   file, so SetInventory override finds nothing and skips.
+// - If SVM prevented RaidEndInterceptor: the snapshot file still exists,
+//   so SetInventory override restores from it.
 //
 // AUTHOR: Blackhorse311
 // LICENSE: MIT
@@ -43,26 +43,18 @@ using SPTarkov.Server.Core.Utils.Cloners;
 namespace Blackhorse311.KeepStartingGear.Server;
 
 /// <summary>
-/// Custom InRaidHelper that skips DeleteInventory when inventory was restored from snapshot.
-/// This allows the mod to preserve equipment on death when a valid snapshot exists.
+/// Custom InRaidHelper that handles snapshot restoration via SetInventory override
+/// and selective inventory deletion via DeleteInventory override.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Why we need this:</b>
-/// </para>
-/// <para>
-/// SPT processes raid end in multiple steps. RaidEndInterceptor runs first and
-/// restores the inventory from snapshot. But then SPT's normal death processing
-/// kicks in and tries to delete the inventory. We need to prevent that deletion.
-/// </para>
-/// <para>
-/// <b>How it works:</b>
+/// <b>Two-phase restoration:</b>
 /// </para>
 /// <list type="number">
-///   <item>RaidEndInterceptor restores inventory and sets the restoration flag</item>
-///   <item>SPT calls InRaidHelper.DeleteInventory() as part of death processing</item>
-///   <item>Our override calls TryConsume() which atomically checks and resets the flag</item>
-///   <item>If flag was set, skip deletion; otherwise try snapshot restoration or normal processing</item>
+///   <item>SetInventory override: restores snapshot items into postRaidProfile before
+///   base.SetInventory copies them to the server profile (SVM compatibility)</item>
+///   <item>DeleteInventory override: checks SnapshotRestorationState to preserve managed
+///   slots and delete non-managed slots (selective death penalty)</item>
 /// </list>
 /// <para>
 /// <b>Injectable attribute:</b>
@@ -128,6 +120,67 @@ public class CustomInRaidHelper : InRaidHelper
     // ========================================================================
 
     /// <summary>
+    /// Override SetInventory to restore snapshot items into the postRaidProfile BEFORE
+    /// base.SetInventory copies them to the server profile.
+    /// </summary>
+    /// <param name="sessionId">The session/profile ID</param>
+    /// <param name="serverProfile">The server-side PMC profile (will receive items from postRaidProfile)</param>
+    /// <param name="postRaidProfile">The client's post-raid profile (items the player had at raid end)</param>
+    /// <param name="isSurvived">True if the player extracted successfully</param>
+    /// <param name="isTransfer">True if the player is transferring between maps</param>
+    /// <remarks>
+    /// <para>
+    /// This is the primary restoration path for SVM compatibility. When SVM is installed,
+    /// it replaces MatchCallbacks, preventing RaidEndInterceptor from running. Without this
+    /// override, the postRaidProfile would contain the player's death-state inventory, and
+    /// base.SetInventory would copy that death state to the server profile.
+    /// </para>
+    /// <para>
+    /// The snapshot file acts as coordination: if RaidEndInterceptor already handled
+    /// restoration, it deleted the snapshot file. If SVM prevented it, the file still exists.
+    /// </para>
+    /// </remarks>
+    public override void SetInventory(MongoId sessionId, PmcData serverProfile,
+        PmcData postRaidProfile, bool isSurvived, bool isTransfer)
+    {
+        // Only attempt restoration on death (not extraction or map transfer)
+        if (!isSurvived && !isTransfer)
+        {
+            var postRaidInventory = postRaidProfile?.Inventory?.Items;
+            if (postRaidInventory != null)
+            {
+                // TryRestore checks for the snapshot file. If RaidEndInterceptor already
+                // ran, it deleted the file and this returns "No snapshot file found".
+                // If SVM prevented RaidEndInterceptor, the file exists and we restore here.
+                var result = _restorer.TryRestore(sessionId.ToString(), postRaidInventory);
+
+                if (result.Success)
+                {
+                    _logger.Info($"{Constants.LogPrefix} Pre-SetInventory restoration: {result.ItemsAdded} items restored into post-raid profile");
+                    if (result.DuplicatesSkipped > 0)
+                    {
+                        _logger.Debug($"{Constants.LogPrefix} Skipped {result.DuplicatesSkipped} duplicate items");
+                    }
+                    if (result.NonManagedSkipped > 0)
+                    {
+                        _logger.Debug($"{Constants.LogPrefix} Skipped {result.NonManagedSkipped} items from non-managed slots");
+                    }
+
+                    // Mark restoration state so DeleteInventory knows to do partial deletion
+                    SnapshotRestorationState.MarkRestored(sessionId.ToString(), result.ManagedSlotIds);
+                    _logger.Debug($"{Constants.LogPrefix} Marked restoration state with {result.ManagedSlotIds?.Count ?? 0} managed slots");
+                }
+                else if (!string.IsNullOrEmpty(result.ErrorMessage) && result.ErrorMessage != "No snapshot file found")
+                {
+                    _logger.Warning($"{Constants.LogPrefix} SetInventory restoration failed: {result.ErrorMessage}");
+                }
+            }
+        }
+
+        base.SetInventory(sessionId, serverProfile, postRaidProfile, isSurvived, isTransfer);
+    }
+
+    /// <summary>
     /// Override DeleteInventory to selectively skip deletion for managed slots when inventory was restored from snapshot.
     /// </summary>
     /// <param name="pmcData">The player's PMC data containing inventory</param>
@@ -172,51 +225,10 @@ public class CustomInRaidHelper : InRaidHelper
             return;
         }
 
-        // Try to restore from snapshot (this handles SVM compatibility)
-        // When SVM is installed, RaidEndInterceptor may not run, so we do restoration here
-        var result = _restorer.TryRestore(sessionId.ToString(), pmcData.Inventory.Items);
-
-        if (result.Success)
-        {
-            _logger.Info($"{Constants.LogPrefix} Inventory restored from snapshot ({result.ItemsAdded} items)!");
-            if (result.DuplicatesSkipped > 0)
-            {
-                _logger.Debug($"{Constants.LogPrefix} Skipped {result.DuplicatesSkipped} duplicate items");
-            }
-            if (result.NonManagedSkipped > 0)
-            {
-                _logger.Debug($"{Constants.LogPrefix} Skipped {result.NonManagedSkipped} items from non-managed slots");
-            }
-
-            // Handle managed slot deletion based on slot info
-            if (result.ManagedSlotIds == null)
-            {
-                // Legacy: no slot info, skip deletion (all preserved)
-                _logger.Debug($"{Constants.LogPrefix} Legacy snapshot - all slots preserved");
-            }
-            else if (result.ManagedSlotIds.Count == 0)
-            {
-                // Empty set: no slots protected, use normal death processing
-                _logger.Debug($"{Constants.LogPrefix} No managed slots - using normal death processing for equipment");
-                base.DeleteInventory(pmcData, sessionId);
-            }
-            else
-            {
-                // Normal: preserve managed, delete non-managed
-                _logger.Debug($"{Constants.LogPrefix} Partial DeleteInventory - preserving {result.ManagedSlotIds.Count} managed slots");
-                DeleteNonManagedSlotItems(pmcData, result.ManagedSlotIds);
-            }
-            return;
-        }
-
-        // Log restoration failure only if there was a snapshot but it failed
-        if (!string.IsNullOrEmpty(result.ErrorMessage) && result.ErrorMessage != "No snapshot file found")
-        {
-            _logger.Warning($"{Constants.LogPrefix} Snapshot restoration failed: {result.ErrorMessage}");
-        }
-
-        // Normal death processing - no snapshot found
-        _logger.Debug($"{Constants.LogPrefix} Normal death processing - DeleteInventory will proceed");
+        // No restoration state found. This means neither RaidEndInterceptor nor
+        // SetInventory override performed restoration (no snapshot file existed).
+        // Proceed with normal death processing.
+        _logger.Debug($"{Constants.LogPrefix} No restoration state found - normal death processing");
         base.DeleteInventory(pmcData, sessionId);
     }
 
@@ -273,6 +285,13 @@ public class CustomInRaidHelper : InRaidHelper
             if (string.Equals(slotId, Constants.SecuredContainerSlot, StringComparison.OrdinalIgnoreCase))
             {
                 _logger.Debug($"{Constants.LogPrefix} Preserving SecuredContainer and contents (always kept in normal Tarkov)");
+                continue;
+            }
+
+            // Scabbard: ALWAYS preserve container AND contents (melee weapons are never lost on death)
+            if (string.Equals(slotId, Constants.ScabbardSlot, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.Debug($"{Constants.LogPrefix} Preserving Scabbard and contents (melee weapons always kept in normal Tarkov)");
                 continue;
             }
 

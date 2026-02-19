@@ -5,6 +5,51 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.7] - 2026-02-19
+
+### Fixed - SVM Compatibility and Scabbard Preservation
+
+This release fixes two bugs: gear not restoring on death when SVM is installed (GitHub #20), and melee weapons being deleted from non-managed Scabbard slots.
+
+#### SVM Restoration Failure (CRITICAL)
+
+**Problem:** When SVM (Server Value Modifier) is installed, it replaces `MatchCallbacks` via dependency injection, preventing `RaidEndInterceptor.EndLocalRaid()` from running. The fallback restoration in `DeleteInventory` was too late in SPT's pipeline. By the time `DeleteInventory` ran, `SetInventory` had already copied the player's death-state inventory to the server profile, making restoration impossible.
+
+**Symptoms:**
+- Only Pockets restored on death (because Pockets container is always preserved)
+- All other gear lost despite snapshot being taken
+- Only occurs when SVM is installed
+
+**Fix:** Override `SetInventory` in `CustomInRaidHelper` to restore snapshot items into `postRaidProfile` BEFORE `base.SetInventory` copies them to the server profile. The snapshot file acts as a coordination mechanism: if `RaidEndInterceptor` already ran, it deleted the file so `SetInventory` finds nothing and skips. If SVM prevented `RaidEndInterceptor`, the file still exists and `SetInventory` restores from it.
+
+**File:** `src/servermod/CustomInRaidHelper.cs`
+
+#### Scabbard Deletion on Death (MEDIUM)
+
+**Problem:** In `DeleteNonManagedSlotItems`, the Scabbard slot was treated as a normal slot. When Scabbard was not in the managed set, the melee weapon was deleted. In normal Tarkov, melee weapons are never lost on death.
+
+**Fix:** Added Scabbard to the always-preserved slots in `DeleteNonManagedSlotItems`, matching SecuredContainer behavior (container and contents always preserved).
+
+**Files:** `src/servermod/CustomInRaidHelper.cs`, `src/servermod/Constants.cs`
+
+### Technical
+
+- New two-phase restoration architecture: Phase 1 (SetInventory override) restores snapshot, Phase 2 (DeleteInventory override) handles selective deletion
+- Removed fallback `TryRestore` from `DeleteInventory` (was operating too late in the pipeline)
+- Added `Constants.ScabbardSlot` shared constant
+- Added 2 new Scabbard tests (48 total: 10 serialization + 38 restoration algorithm)
+- All fixes are server-side only; client DLL version bumped but code unchanged
+
+### Contributors
+
+- **@theguy101** - Reported gear not restoring with SVM installed via GitHub #20
+
+### Compatibility
+
+- SPT 4.0.x (tested on 4.0.11)
+
+---
+
 ## [2.0.6] - 2026-02-16
 
 ### Fixed - Pockets Contents Not Restored From Snapshot

@@ -11,7 +11,7 @@
 //
 // INVARIANTS:
 // 1. Equipment container is never removed
-// 2. SecuredContainer and Pockets containers are always preserved (never deleted)
+// 2. SecuredContainer, Pockets, and Scabbard containers are always preserved (never deleted)
 // 3. SecuredContainer/Pockets CONTENTS are managed when the slot is in IncludedSlots
 // 4. Items are traced to their root slot via parent chain
 // 5. Cycle detection prevents infinite loops
@@ -40,6 +40,9 @@ public static class AlgorithmConstants
 
     /// <summary>Pockets slot name (permanent item, always preserved)</summary>
     public const string PocketsSlot = "Pockets";
+
+    /// <summary>Scabbard slot name (melee weapons are never lost on death)</summary>
+    public const string ScabbardSlot = "Scabbard";
 
     /// <summary>Maximum depth for parent chain traversal (cycle protection).
     /// Must match production value in Constants.MaxParentTraversalDepth.</summary>

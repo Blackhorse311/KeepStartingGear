@@ -734,4 +734,66 @@ public class SimulateRestorationTests
         Assert.False(result.Success);
         Assert.Equal("No Equipment container in profile", result.ErrorMessage);
     }
+
+    [Fact]
+    public void RestoresScabbardContents_WhenManaged()
+    {
+        // Arrange - Scabbard is managed: melee weapon should be restored from snapshot
+        var profileItems = new List<AlgorithmItem>
+        {
+            AlgorithmItem.Create(_equipmentId, tpl: AlgorithmConstants.EquipmentTemplateId),
+            AlgorithmItem.Create("current-melee", parentId: _equipmentId, slotId: "Scabbard")
+        };
+
+        var snapshotItems = new List<AlgorithmItem>
+        {
+            AlgorithmItem.Create("snapshot-equipment", tpl: AlgorithmConstants.EquipmentTemplateId),
+            AlgorithmItem.Create("snapshot-melee", parentId: "snapshot-equipment", slotId: "Scabbard")
+        };
+
+        var includedSlots = new List<string> { "Scabbard" };
+
+        // Act
+        var result = RestorationAlgorithm.SimulateRestoration(profileItems, snapshotItems, includedSlots, null);
+
+        // Assert - Melee weapon replaced with snapshot version
+        Assert.True(result.Success);
+        Assert.Equal(1, result.ItemsAdded);
+        Assert.Equal(1, result.ItemsRemoved);
+        Assert.Contains(profileItems, i => i.Id == "snapshot-melee");
+        Assert.DoesNotContain(profileItems, i => i.Id == "current-melee");
+    }
+
+    [Fact]
+    public void PreservesScabbardContents_WhenNotManaged()
+    {
+        // Arrange - Scabbard not managed: melee weapon should be left alone
+        // In normal Tarkov, melee weapons are never lost on death.
+        // DeleteNonManagedSlotItems (production code) always preserves Scabbard.
+        // In the restoration algorithm, non-managed slots are simply not touched.
+        var profileItems = new List<AlgorithmItem>
+        {
+            AlgorithmItem.Create(_equipmentId, tpl: AlgorithmConstants.EquipmentTemplateId),
+            AlgorithmItem.Create("melee-weapon", parentId: _equipmentId, slotId: "Scabbard"),
+            AlgorithmItem.Create("weapon", parentId: _equipmentId, slotId: "FirstPrimaryWeapon")
+        };
+
+        var snapshotItems = new List<AlgorithmItem>
+        {
+            AlgorithmItem.Create("snapshot-equipment", tpl: AlgorithmConstants.EquipmentTemplateId),
+            AlgorithmItem.Create("snapshot-weapon", parentId: "snapshot-equipment", slotId: "FirstPrimaryWeapon")
+        };
+
+        // Only weapon is managed, Scabbard is NOT
+        var includedSlots = new List<string> { "FirstPrimaryWeapon" };
+
+        // Act
+        var result = RestorationAlgorithm.SimulateRestoration(profileItems, snapshotItems, includedSlots, null);
+
+        // Assert - Scabbard untouched, weapon restored
+        Assert.True(result.Success);
+        Assert.Contains(profileItems, i => i.Id == "melee-weapon"); // Preserved (not managed)
+        Assert.DoesNotContain(profileItems, i => i.Id == "weapon"); // Removed
+        Assert.Contains(profileItems, i => i.Id == "snapshot-weapon"); // Restored
+    }
 }
