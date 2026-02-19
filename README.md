@@ -4,7 +4,7 @@
 
 [![SPT 4.0.x](https://img.shields.io/badge/SPT-4.0.x-green.svg)](https://forge.sp-tarkov.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![VirusTotal](https://img.shields.io/badge/VirusTotal-0%2F70-brightgreen.svg)](https://www.virustotal.com/gui/file/ff232a9db482b915d31ac82ac262af5379372e27698f35c82bf03deb668d3924)
+[![VirusTotal](https://img.shields.io/badge/VirusTotal-0%2F64-brightgreen.svg)](https://www.virustotal.com/gui/file/7ae500007d34edf610e86fcf99a769f6d662b3585c211904b011104d3f691621)
 
 ---
 
@@ -316,7 +316,7 @@ dotnet build src/servermod/Blackhorse311.KeepStartingGear.Server.csproj
 ## Security & Compliance
 
 Each release includes a VirusTotal scan:
-- **v1.4.9**: [VirusTotal Scan](https://www.virustotal.com/gui/file/ff232a9db482b915d31ac82ac262af5379372e27698f35c82bf03deb668d3924) - 0/70 clean
+- **v2.0.7**: [VirusTotal Scan](https://www.virustotal.com/gui/file/7ae500007d34edf610e86fcf99a769f6d662b3585c211904b011104d3f691621) - 0/64 clean
 
 Source code is available on GitHub for independent verification and building.
 
