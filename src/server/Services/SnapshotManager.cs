@@ -28,8 +28,8 @@
 using System;
 using System.IO;
 using System.Linq;
-using System.Text.RegularExpressions;
 using Blackhorse311.KeepStartingGear.Models;
+using Blackhorse311.KeepStartingGear.Utilities;
 using Newtonsoft.Json;
 
 namespace Blackhorse311.KeepStartingGear.Services;
@@ -65,14 +65,6 @@ public class SnapshotManager
     /// Set during construction based on Plugin.GetDataPath().
     /// </summary>
     private readonly string _snapshotDirectory;
-
-    /// <summary>
-    /// HIGH-003 FIX: Compiled regex for session ID validation.
-    /// Only allows alphanumeric characters, hyphens, and underscores.
-    /// This prevents path traversal attacks via malicious session IDs like "../../../etc/passwd".
-    /// </summary>
-    private static readonly Regex SessionIdValidator =
-        new(@"^[a-zA-Z0-9\-_]+$", RegexOptions.Compiled);
 
     /// <summary>Maximum file size for snapshot files (10MB).</summary>
     private const long MaxSnapshotFileSize = 10 * 1024 * 1024;
@@ -141,12 +133,11 @@ public class SnapshotManager
     /// <summary>
     /// HIGH-003 FIX: Validates that a session ID contains only safe characters.
     /// Prevents path traversal attacks via malicious session IDs.
+    /// Delegates to the shared <see cref="SessionIdValidator"/> utility.
     /// </summary>
     private static bool IsValidSessionId(string sessionId)
     {
-        if (string.IsNullOrEmpty(sessionId))
-            return false;
-        return SessionIdValidator.IsMatch(sessionId);
+        return SessionIdValidator.IsValid(sessionId);
     }
 
     /// <summary>
@@ -352,8 +343,9 @@ public class SnapshotManager
             // Read JSON content from file
             string jsonContent = File.ReadAllText(filePath);
 
-            // Deserialize JSON to InventorySnapshot object
-            var snapshot = JsonConvert.DeserializeObject<InventorySnapshot>(jsonContent);
+            // SEC-001: Explicitly disable TypeNameHandling to prevent unsafe deserialization
+            var snapshot = JsonConvert.DeserializeObject<InventorySnapshot>(jsonContent,
+                new JsonSerializerSettings { TypeNameHandling = TypeNameHandling.None });
 
             // Validate the loaded snapshot
             if (snapshot == null || !snapshot.IsValid())
@@ -441,7 +433,9 @@ public class SnapshotManager
 
             // Load and return the snapshot from this file
             string jsonContent = File.ReadAllText(mostRecentFile);
-            var snapshot = JsonConvert.DeserializeObject<InventorySnapshot>(jsonContent);
+            // SEC-001: Explicitly disable TypeNameHandling to prevent unsafe deserialization
+            var snapshot = JsonConvert.DeserializeObject<InventorySnapshot>(jsonContent,
+                new JsonSerializerSettings { TypeNameHandling = TypeNameHandling.None });
 
             // REL-001: Validate deserialized snapshot is not null
             if (snapshot == null)

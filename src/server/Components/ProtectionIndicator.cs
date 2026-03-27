@@ -15,11 +15,13 @@
 // ============================================================================
 
 using System;
+using System.IO;
 using UnityEngine;
 using Comfort.Common;
 using EFT;
 using Blackhorse311.KeepStartingGear.Configuration;
 using Blackhorse311.KeepStartingGear.Services;
+using Blackhorse311.KeepStartingGear.Utilities;
 
 namespace Blackhorse311.KeepStartingGear.Components;
 
@@ -60,6 +62,12 @@ public class ProtectionIndicator : MonoBehaviour
     private int _protectedSlotCount;
     private bool _isInRaid;
     private bool _showIndicator;
+
+    /// <summary>Last write time of the snapshot file, used to avoid unnecessary re-reads.</summary>
+    private DateTime _lastSnapshotModified;
+
+    /// <summary>Cached session ID to detect session changes.</summary>
+    private string _cachedSessionId;
 
     // ========================================================================
     // Colors - Now uses ThemeService for theming support
@@ -165,17 +173,53 @@ public class ProtectionIndicator : MonoBehaviour
                 return;
             }
 
-            // Check if snapshot exists
+            // CRIT-7 FIX: Cache snapshot metadata and only reload when the file changes.
+            // Uses try-catch instead of File.Exists to avoid TOCTOU race (C-4 fix).
+            string snapshotPath = Path.Combine(Plugin.GetDataPath(), $"{sessionId}.json");
+
+            DateTime lastWrite;
+            try
+            {
+                lastWrite = File.GetLastWriteTimeUtc(snapshotPath);
+            }
+            catch (Exception) when (true) // FileNotFoundException, IOException, etc.
+            {
+                _hasActiveSnapshot = false;
+                _lastSnapshotModified = default;
+                _cachedSessionId = null;
+                return;
+            }
+
+            // On Windows, GetLastWriteTimeUtc returns 1601-01-01 for non-existent files
+            if (lastWrite.Year < 1970)
+            {
+                _hasActiveSnapshot = false;
+                _lastSnapshotModified = default;
+                _cachedSessionId = null;
+                return;
+            }
+
+            if (lastWrite == _lastSnapshotModified && sessionId == _cachedSessionId)
+            {
+                // Cache hit: file has not changed and session is the same, skip re-read
+                return;
+            }
+
+            // Cache miss: load the snapshot and update cached metadata
             var snapshot = SnapshotManager.Instance?.LoadSnapshot(sessionId);
             if (snapshot == null || !snapshot.IsValid())
             {
                 _hasActiveSnapshot = false;
+                _lastSnapshotModified = default;
+                _cachedSessionId = null;
                 return;
             }
 
             _hasActiveSnapshot = true;
             _protectedItemCount = snapshot.Items?.Count ?? 0;
             _protectedSlotCount = snapshot.IncludedSlots?.Count ?? 0;
+            _lastSnapshotModified = lastWrite;
+            _cachedSessionId = sessionId;
         }
         catch (Exception ex)
         {
@@ -236,11 +280,11 @@ public class ProtectionIndicator : MonoBehaviour
 
         // Draw background
         Color bgColor = PanelBackground;
-        DrawRect(panelRect, bgColor);
+        GuiDrawingHelper.DrawRect(panelRect, bgColor);
 
         // Draw status border
         Color borderColor = _hasActiveSnapshot ? ProtectedColor : UnprotectedColor;
-        DrawRectBorder(panelRect, borderColor, 2);
+        GuiDrawingHelper.DrawRectBorder(panelRect, borderColor, 2);
 
         // Content area
         GUILayout.BeginArea(new Rect(x + 8, y + 6, PanelWidth - 16, PanelHeight - 12));
@@ -277,30 +321,6 @@ public class ProtectionIndicator : MonoBehaviour
     }
 
     // ========================================================================
-    // Drawing Utilities
-    // ========================================================================
-
-    private void DrawRect(Rect rect, Color color)
-    {
-        Color oldColor = GUI.color;
-        GUI.color = color;
-        GUI.DrawTexture(rect, Texture2D.whiteTexture);
-        GUI.color = oldColor;
-    }
-
-    private void DrawRectBorder(Rect rect, Color color, int thickness)
-    {
-        // Top
-        DrawRect(new Rect(rect.x, rect.y, rect.width, thickness), color);
-        // Bottom
-        DrawRect(new Rect(rect.x, rect.yMax - thickness, rect.width, thickness), color);
-        // Left
-        DrawRect(new Rect(rect.x, rect.y, thickness, rect.height), color);
-        // Right
-        DrawRect(new Rect(rect.xMax - thickness, rect.y, thickness, rect.height), color);
-    }
-
-    // ========================================================================
     // Public API
     // ========================================================================
 
@@ -320,6 +340,12 @@ public class ProtectionIndicator : MonoBehaviour
     /// <summary>
     /// Ensures the indicator instance exists.
     /// </summary>
+    /// <remarks>
+    /// Fallback creation path for when component is accessed before Plugin.Awake().
+    /// Plugin.Awake() is the primary creation path; this handles rare edge cases
+    /// where ForceRefresh() or other callers run before the plugin has fully initialized.
+    /// DontDestroyOnLoad in Awake() is intentional to survive scene transitions.
+    /// </remarks>
     public static void EnsureInstance()
     {
         if (Instance == null)

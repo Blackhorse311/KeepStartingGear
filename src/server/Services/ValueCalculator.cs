@@ -327,6 +327,27 @@ public class ValueCalculator
     // ========================================================================
 
     /// <summary>
+    /// Slot-to-category mapping for value summary grouping. Case-insensitive lookup.
+    /// </summary>
+    private static readonly Dictionary<string, string> SlotCategories =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["FirstPrimaryWeapon"] = "Weapons",
+            ["SecondPrimaryWeapon"] = "Weapons",
+            ["Holster"] = "Weapons",
+            ["Headwear"] = "Head Gear",
+            ["Earpiece"] = "Head Gear",
+            ["FaceCover"] = "Head Gear",
+            ["Eyewear"] = "Head Gear",
+            ["TacticalVest"] = "Armor",
+            ["ArmorVest"] = "Armor",
+            ["Backpack"] = "Backpack",
+            ["Pockets"] = "Pockets",
+            ["SecuredContainer"] = "Secure",
+            ["Scabbard"] = "Melee"
+        };
+
+    /// <summary>
     /// Gets a simplified category name for a slot.
     /// </summary>
     private string GetItemCategory(string slotId)
@@ -334,17 +355,7 @@ public class ValueCalculator
         if (string.IsNullOrEmpty(slotId))
             return "Other";
 
-        return slotId.ToLowerInvariant() switch
-        {
-            "firstprimaryweapon" or "secondprimaryweapon" or "holster" => "Weapons",
-            "headwear" or "earpiece" or "facecover" or "eyewear" => "Head Gear",
-            "tacticalvest" or "armorvest" => "Armor",
-            "backpack" => "Backpack",
-            "pockets" => "Pockets",
-            "securedcontainer" => "Secure",
-            "scabbard" => "Melee",
-            _ => "Other"
-        };
+        return SlotCategories.TryGetValue(slotId, out var category) ? category : "Other";
     }
 }
 

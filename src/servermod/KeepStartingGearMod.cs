@@ -33,6 +33,7 @@
 // LICENSE: MIT
 // ============================================================================
 
+using Blackhorse311.KeepStartingGear.Server.Compatibility;
 using SPTarkov.DI.Annotations;
 using SPTarkov.Reflection.Patching;
 using SPTarkov.Server.Core.Controllers;
@@ -94,50 +95,32 @@ public class KeepStartingGearMod(ISptLogger<KeepStartingGearMod> logger) : IOnLo
 
     /// <summary>
     /// Checks for known conflicting mods and logs warnings if detected.
+    /// S-3 FIX: Replaced inline SVM-only folder scan with a call to ModDetector,
+    /// which covers SVM, FIKA, Arcade Mode, Never Lose Equipments, Keep Your Equipment,
+    /// and Fin's Hardcore Options in one pass. The previous inline code duplicated a
+    /// subset of what ScanForSVM() in ModDetector already does.
     /// </summary>
     private void CheckForConflictingMods()
     {
         try
         {
             string dllPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
-            string? modDirectory = System.IO.Path.GetDirectoryName(dllPath);
 
-            if (string.IsNullOrEmpty(modDirectory))
-                return;
+            var logAdapter = new SimpleLoggerAdapter(
+                debug: msg => logger.Debug(msg),
+                info: msg => logger.Info(msg),
+                warning: msg => logger.Warning(msg),
+                error: msg => logger.Error(msg)
+            );
 
-            // Navigate to user/mods directory
-            string modsDirectory = System.IO.Path.GetFullPath(System.IO.Path.Combine(modDirectory, ".."));
+            var detector = new ModDetector(logAdapter, dllPath);
+            detector.ScanForMods();
 
-            if (!System.IO.Directory.Exists(modsDirectory))
-                return;
-
-            // Check for SVM (Server Value Modifier)
-            // The default folder name is "[SVM] Server Value Modifier" but users may rename it
-            // We check all directories for any that contain "SVM" (case-insensitive)
-            // Note: We strip brackets [] from folder names before checking to handle "[SVM]" format
-            string[] svmKeywords = { "svm", "servervaluemodifier", "server value modifier" };
-
-            foreach (var directory in System.IO.Directory.GetDirectories(modsDirectory))
+            var criticalConflicts = detector.GetCriticalConflicts();
+            foreach (var conflict in criticalConflicts)
             {
-                string folderName = System.IO.Path.GetFileName(directory).ToLowerInvariant();
-
-                // Strip brackets to handle folder names like "[SVM] Server Value Modifier"
-                string normalizedFolderName = folderName.Replace("[", "").Replace("]", "");
-
-                foreach (var keyword in svmKeywords)
-                {
-                    if (normalizedFolderName.Contains(keyword))
-                    {
-                        logger.Info($"{Constants.LogPrefix} SVM (Server Value Modifier) detected: {System.IO.Path.GetFileName(directory)}");
-                        logger.Info($"{Constants.LogPrefix} Using Harmony patching for SVM compatibility.");
-                        logger.Info($"{Constants.LogPrefix} Note: If SVM's 'Save Gear After Death' is enabled,");
-                        logger.Info($"{Constants.LogPrefix}       it may override KeepStartingGear's selective restoration.");
-                        return;
-                    }
-                }
+                logger.Warning($"{Constants.LogPrefix} CONFLICT: {conflict.DisplayName} detected - {conflict.ConflictReason}");
             }
-
-            logger.Info($"{Constants.LogPrefix} SVM not detected - using standard restoration flow.");
         }
         catch (Exception ex)
         {

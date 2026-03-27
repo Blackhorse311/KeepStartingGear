@@ -21,6 +21,7 @@ using Blackhorse311.KeepStartingGear.Configuration;
 using Blackhorse311.KeepStartingGear.Constants;
 using Blackhorse311.KeepStartingGear.Services;
 using Blackhorse311.KeepStartingGear.Models;
+using Blackhorse311.KeepStartingGear.Utilities;
 
 namespace Blackhorse311.KeepStartingGear.Components;
 
@@ -78,6 +79,10 @@ public class LossPreviewOverlay : MonoBehaviour
     private GUIStyle _itemStyle;
     private GUIStyle _firStyle;
     private GUIStyle _safeStyle;
+    private GUIStyle _warningStyle;
+    private GUIStyle _infoStyle;
+    private GUIStyle _moreStyle;
+    private GUIStyle _hintStyle;
     private bool _stylesInitialized;
 
     // ========================================================================
@@ -157,6 +162,12 @@ public class LossPreviewOverlay : MonoBehaviour
     /// <summary>
     /// Ensures the overlay instance exists.
     /// </summary>
+    /// <remarks>
+    /// Fallback creation path for when component is accessed before Plugin.Awake().
+    /// Plugin.Awake() is the primary creation path; this handles rare edge cases
+    /// where Show() is called before the plugin has fully initialized.
+    /// DontDestroyOnLoad in Awake() is intentional to survive scene transitions.
+    /// </remarks>
     public static void EnsureInstance()
     {
         if (Instance == null)
@@ -351,6 +362,35 @@ public class LossPreviewOverlay : MonoBehaviour
         };
         _safeStyle.normal.textColor = SafeColor;
 
+        _warningStyle = new GUIStyle(GUI.skin.label)
+        {
+            fontSize = 12,
+            wordWrap = true,
+            alignment = TextAnchor.MiddleCenter
+        };
+        _warningStyle.normal.textColor = LostColor;
+
+        _infoStyle = new GUIStyle(GUI.skin.label)
+        {
+            fontSize = 11,
+            alignment = TextAnchor.MiddleCenter
+        };
+        _infoStyle.normal.textColor = new Color(0.7f, 0.7f, 0.7f, 1f);
+
+        _moreStyle = new GUIStyle(GUI.skin.label)
+        {
+            fontStyle = FontStyle.Italic,
+            fontSize = 11
+        };
+        _moreStyle.normal.textColor = new Color(0.6f, 0.6f, 0.6f, 1f);
+
+        _hintStyle = new GUIStyle(GUI.skin.label)
+        {
+            alignment = TextAnchor.MiddleCenter,
+            fontSize = 10
+        };
+        _hintStyle.normal.textColor = new Color(0.5f, 0.5f, 0.5f, 1f);
+
         _stylesInitialized = true;
     }
 
@@ -370,8 +410,8 @@ public class LossPreviewOverlay : MonoBehaviour
         Rect panelRect = new Rect(x, y, PanelWidth, panelHeight);
 
         // Draw background
-        DrawRect(panelRect, PanelBackground);
-        DrawRectBorder(panelRect, BorderColor, 2);
+        GuiDrawingHelper.DrawRect(panelRect, PanelBackground);
+        GuiDrawingHelper.DrawRectBorder(panelRect, BorderColor, 2);
 
         // Content
         GUILayout.BeginArea(new Rect(x + 15, y + 15, PanelWidth - 30, panelHeight - 30));
@@ -386,16 +426,10 @@ public class LossPreviewOverlay : MonoBehaviour
             GUILayout.Label("⚠ NO PROTECTION ACTIVE", _headerStyle);
             GUILayout.Space(10);
 
-            var warningStyle = new GUIStyle(GUI.skin.label)
-            {
-                fontSize = 12,
-                wordWrap = true,
-                alignment = TextAnchor.MiddleCenter
-            };
-            warningStyle.normal.textColor = LostColor;
-            GUILayout.Label("You have no active snapshot!\nAll items would be lost on death.", warningStyle);
+            _warningStyle.normal.textColor = LostColor;
+            GUILayout.Label("You have no active snapshot!\nAll items would be lost on death.", _warningStyle);
             GUILayout.Space(10);
-            GUILayout.Label("Take a snapshot to protect your gear.", warningStyle);
+            GUILayout.Label("Take a snapshot to protect your gear.", _warningStyle);
         }
         else if (_totalLostCount == 0)
         {
@@ -405,13 +439,7 @@ public class LossPreviewOverlay : MonoBehaviour
             GUILayout.Label("You would lose NOTHING!", _safeStyle);
             GUILayout.Space(10);
 
-            var infoStyle = new GUIStyle(GUI.skin.label)
-            {
-                fontSize = 11,
-                alignment = TextAnchor.MiddleCenter
-            };
-            infoStyle.normal.textColor = new Color(0.7f, 0.7f, 0.7f, 1f);
-            GUILayout.Label("All current items are in your snapshot.", infoStyle);
+            GUILayout.Label("All current items are in your snapshot.", _infoStyle);
         }
         else
         {
@@ -437,13 +465,7 @@ public class LossPreviewOverlay : MonoBehaviour
 
             if (_lostItems.Count > maxDisplay)
             {
-                var moreStyle = new GUIStyle(GUI.skin.label)
-                {
-                    fontStyle = FontStyle.Italic,
-                    fontSize = 11
-                };
-                moreStyle.normal.textColor = new Color(0.6f, 0.6f, 0.6f, 1f);
-                GUILayout.Label($"  ... and {_lostItems.Count - maxDisplay} more items", moreStyle);
+                GUILayout.Label($"  ... and {_lostItems.Count - maxDisplay} more items", _moreStyle);
             }
 
             GUILayout.EndScrollView();
@@ -451,13 +473,7 @@ public class LossPreviewOverlay : MonoBehaviour
 
         // Dismiss hint
         GUILayout.FlexibleSpace();
-        var hintStyle = new GUIStyle(GUI.skin.label)
-        {
-            alignment = TextAnchor.MiddleCenter,
-            fontSize = 10
-        };
-        hintStyle.normal.textColor = new Color(0.5f, 0.5f, 0.5f, 1f);
-        GUILayout.Label("Click or press ESC to dismiss", hintStyle);
+        GUILayout.Label("Click or press ESC to dismiss", _hintStyle);
 
         GUILayout.EndArea();
     }
@@ -471,25 +487,6 @@ public class LossPreviewOverlay : MonoBehaviour
         return Math.Min(height, MaxPanelHeight);
     }
 
-    // ========================================================================
-    // Drawing Utilities
-    // ========================================================================
-
-    private void DrawRect(Rect rect, Color color)
-    {
-        Color oldColor = GUI.color;
-        GUI.color = color;
-        GUI.DrawTexture(rect, Texture2D.whiteTexture);
-        GUI.color = oldColor;
-    }
-
-    private void DrawRectBorder(Rect rect, Color color, int thickness)
-    {
-        DrawRect(new Rect(rect.x, rect.y, rect.width, thickness), color);
-        DrawRect(new Rect(rect.x, rect.yMax - thickness, rect.width, thickness), color);
-        DrawRect(new Rect(rect.x, rect.y, thickness, rect.height), color);
-        DrawRect(new Rect(rect.xMax - thickness, rect.y, thickness, rect.height), color);
-    }
 }
 
 /// <summary>

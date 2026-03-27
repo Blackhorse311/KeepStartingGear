@@ -163,6 +163,25 @@ public static class SnapshotRestorationState
     }
 
     /// <summary>
+    /// Checks whether a restoration entry exists for the given session ID.
+    /// Used by SetInventory to avoid duplicate restoration when RaidEndInterceptor already handled it.
+    /// </summary>
+    /// <remarks>
+    /// This is a performance hint, not a correctness guarantee. There is a TOCTOU window
+    /// between HasEntry() and the subsequent TryConsume() in DeleteInventory. The snapshot
+    /// file-based coordination is the authoritative mechanism; this check merely avoids
+    /// redundant file I/O when RaidEndInterceptor already ran. SPT serializes per-session
+    /// calls so the race is theoretical only.
+    /// </remarks>
+    /// <param name="sessionId">The session/profile ID.</param>
+    /// <returns>True if an entry exists (restoration was marked), false otherwise.</returns>
+    public static bool HasEntry(string sessionId)
+    {
+        if (string.IsNullOrEmpty(sessionId)) return false;
+        return _restorationStates.ContainsKey(sessionId);
+    }
+
+    /// <summary>
     /// Removes any pending restoration state for the given session.
     /// Call this to clean up on error paths.
     /// </summary>

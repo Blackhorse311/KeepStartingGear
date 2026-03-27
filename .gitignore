@@ -64,6 +64,7 @@ ISSUES.md
 
 # Release packages (distributed separately)
 release/
+release-staging/
 
 # Research and reference materials (third-party code)
 research/

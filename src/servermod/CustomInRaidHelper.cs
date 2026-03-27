@@ -146,33 +146,44 @@ public class CustomInRaidHelper : InRaidHelper
         // Only attempt restoration on death (not extraction or map transfer)
         if (!isSurvived && !isTransfer)
         {
-            var postRaidInventory = postRaidProfile?.Inventory?.Items;
-            if (postRaidInventory != null)
+            // CRIT-5 FIX: Check if RaidEndInterceptor already restored.
+            // If so, SnapshotRestorationState already has an entry and the snapshot file is deleted.
+            // Calling TryRestore again would find no snapshot file and do nothing, but this guard
+            // makes the coordination explicit and avoids the unnecessary file-system lookup.
+            if (SnapshotRestorationState.HasEntry(sessionId.ToString()))
             {
-                // TryRestore checks for the snapshot file. If RaidEndInterceptor already
-                // ran, it deleted the file and this returns "No snapshot file found".
-                // If SVM prevented RaidEndInterceptor, the file exists and we restore here.
-                var result = _restorer.TryRestore(sessionId.ToString(), postRaidInventory);
-
-                if (result.Success)
+                _logger.Debug($"{Constants.LogPrefix} RaidEndInterceptor already restored for session {sessionId} - skipping SetInventory restoration");
+            }
+            else
+            {
+                var postRaidInventory = postRaidProfile?.Inventory?.Items;
+                if (postRaidInventory != null)
                 {
-                    _logger.Info($"{Constants.LogPrefix} Pre-SetInventory restoration: {result.ItemsAdded} items restored into post-raid profile");
-                    if (result.DuplicatesSkipped > 0)
-                    {
-                        _logger.Debug($"{Constants.LogPrefix} Skipped {result.DuplicatesSkipped} duplicate items");
-                    }
-                    if (result.NonManagedSkipped > 0)
-                    {
-                        _logger.Debug($"{Constants.LogPrefix} Skipped {result.NonManagedSkipped} items from non-managed slots");
-                    }
+                    // TryRestore checks for the snapshot file. If RaidEndInterceptor already
+                    // ran, it deleted the file and this returns "No snapshot file found".
+                    // If SVM prevented RaidEndInterceptor, the file exists and we restore here.
+                    var result = _restorer.TryRestore(sessionId.ToString(), postRaidInventory);
 
-                    // Mark restoration state so DeleteInventory knows to do partial deletion
-                    SnapshotRestorationState.MarkRestored(sessionId.ToString(), result.ManagedSlotIds);
-                    _logger.Debug($"{Constants.LogPrefix} Marked restoration state with {result.ManagedSlotIds?.Count ?? 0} managed slots");
-                }
-                else if (!string.IsNullOrEmpty(result.ErrorMessage) && result.ErrorMessage != "No snapshot file found")
-                {
-                    _logger.Warning($"{Constants.LogPrefix} SetInventory restoration failed: {result.ErrorMessage}");
+                    if (result.Success)
+                    {
+                        _logger.Info($"{Constants.LogPrefix} Pre-SetInventory restoration: {result.ItemsAdded} items restored into post-raid profile");
+                        if (result.DuplicatesSkipped > 0)
+                        {
+                            _logger.Debug($"{Constants.LogPrefix} Skipped {result.DuplicatesSkipped} duplicate items");
+                        }
+                        if (result.NonManagedSkipped > 0)
+                        {
+                            _logger.Debug($"{Constants.LogPrefix} Skipped {result.NonManagedSkipped} items from non-managed slots");
+                        }
+
+                        // Mark restoration state so DeleteInventory knows to do partial deletion
+                        SnapshotRestorationState.MarkRestored(sessionId.ToString(), result.ManagedSlotIds);
+                        _logger.Debug($"{Constants.LogPrefix} Marked restoration state with {result.ManagedSlotIds?.Count ?? 0} managed slots");
+                    }
+                    else if (!string.IsNullOrEmpty(result.ErrorMessage) && result.ErrorMessage != "No snapshot file found")
+                    {
+                        _logger.Warning($"{Constants.LogPrefix} SetInventory restoration failed: {result.ErrorMessage}");
+                    }
                 }
             }
         }
@@ -267,6 +278,21 @@ public class CustomInRaidHelper : InRaidHelper
 
         _logger.Debug($"{Constants.LogPrefix} Checking {allEquipmentIds.Count} Equipment container(s) for non-managed slots");
 
+        // W-12 FIX: Pre-build parent-to-children map once so CollectItemAndChildren is O(1) per
+        // child lookup instead of O(N) per BFS node. Without this the full algorithm is O(N*M)
+        // where N = items in inventory and M = items being collected.
+        var childrenByParent = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in inventory.Items)
+        {
+            if (string.IsNullOrEmpty(item.ParentId) || string.IsNullOrEmpty(item.Id)) continue;
+            if (!childrenByParent.TryGetValue(item.ParentId, out var children))
+            {
+                children = new List<string>();
+                childrenByParent[item.ParentId] = children;
+            }
+            children.Add(item.Id);
+        }
+
         // Build a set of item IDs to remove (items in non-managed equipment slots)
         var itemsToRemove = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -304,12 +330,12 @@ public class CustomInRaidHelper : InRaidHelper
                 {
                     _logger.Debug($"{Constants.LogPrefix} Deleting Pockets contents (non-managed slot, normal death)");
                     var pocketsId = item.Id;
-                    for (int i = 0; i < inventory.Items.Count; i++)
+                    if (childrenByParent.TryGetValue(pocketsId, out var pocketsChildren))
                     {
-                        var child = inventory.Items[i];
-                        if (child.ParentId == pocketsId && !string.IsNullOrEmpty(child.Id))
+                        foreach (var childId in pocketsChildren)
                         {
-                            CollectItemAndChildren(child.Id, inventory.Items, itemsToRemove);
+                            if (!string.IsNullOrEmpty(childId))
+                                CollectItemAndChildren(childId, childrenByParent, itemsToRemove);
                         }
                     }
                 }
@@ -321,7 +347,7 @@ public class CustomInRaidHelper : InRaidHelper
             if (!managedSlotIds.Contains(slotId))
             {
                 _logger.Debug($"{Constants.LogPrefix} Deleting item in non-managed slot '{slotId}': {item.Id}");
-                CollectItemAndChildren(item.Id, inventory.Items, itemsToRemove);
+                CollectItemAndChildren(item.Id, childrenByParent, itemsToRemove);
             }
         }
 
@@ -340,10 +366,17 @@ public class CustomInRaidHelper : InRaidHelper
 
     /// <summary>
     /// Collects an item and all its children for deletion using BFS.
-    /// Uses iterative traversal with a safety limit to prevent stack overflow
-    /// from deeply nested or cyclic item trees.
+    /// Uses a pre-built parent-to-children map for O(1) child lookups (O(N) total per call)
+    /// instead of scanning the full items list for each BFS node (O(N*M) total).
+    /// Uses iterative traversal with a safety limit to prevent infinite loops from cyclic trees.
     /// </summary>
-    private void CollectItemAndChildren(string itemId, List<SPTarkov.Server.Core.Models.Eft.Common.Tables.Item> items, HashSet<string> toRemove)
+    /// <param name="itemId">Root item ID to collect</param>
+    /// <param name="childrenByParent">Pre-built map from parent ID to list of child IDs</param>
+    /// <param name="toRemove">Set to add collected item IDs into</param>
+    private void CollectItemAndChildren(
+        string itemId,
+        Dictionary<string, List<string>> childrenByParent,
+        HashSet<string> toRemove)
     {
         if (string.IsNullOrEmpty(itemId))
             return;
@@ -356,18 +389,15 @@ public class CustomInRaidHelper : InRaidHelper
 
         while (queue.Count > 0 && processed < maxProcessed)
         {
-            var currentId = queue.Dequeue();
             processed++;
+            var currentId = queue.Dequeue();
 
-            foreach (var item in items)
+            if (childrenByParent.TryGetValue(currentId, out var children))
             {
-                if (string.IsNullOrEmpty(item.Id))
-                    continue;
-
-                if (item.ParentId == currentId && !toRemove.Contains(item.Id))
+                foreach (var childId in children)
                 {
-                    toRemove.Add(item.Id);
-                    queue.Enqueue(item.Id);
+                    if (toRemove.Add(childId))
+                        queue.Enqueue(childId);
                 }
             }
         }

@@ -15,6 +15,7 @@
 // ============================================================================
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using Blackhorse311.KeepStartingGear.Constants;
@@ -58,13 +59,13 @@ public class RestorationSummaryData
 public class ItemSummary
 {
     /// <summary>Item template ID for lookup.</summary>
-    public string TemplateId { get; set; }
+    public string TemplateId { get; set; } = string.Empty;
 
     /// <summary>Human-readable item name.</summary>
-    public string Name { get; set; }
+    public string Name { get; set; } = string.Empty;
 
     /// <summary>Short name for compact display.</summary>
-    public string ShortName { get; set; }
+    public string ShortName { get; set; } = string.Empty;
 
     /// <summary>Stack count (for stackable items).</summary>
     public int Count { get; set; } = 1;
@@ -76,7 +77,7 @@ public class ItemSummary
     public long EstimatedValue { get; set; }
 
     /// <summary>Slot this item was in (for equipment).</summary>
-    public string SlotName { get; set; }
+    public string SlotName { get; set; } = string.Empty;
 }
 
 /// <summary>
@@ -103,8 +104,9 @@ public static class RestorationSummaryService
     /// <summary>
     /// Cache of item names by template ID.
     /// Populated during gameplay to avoid repeated lookups.
+    /// ConcurrentDictionary handles thread safety without explicit locking.
     /// </summary>
-    private static readonly Dictionary<string, (string Name, string ShortName)> _itemNameCache = new();
+    private static readonly ConcurrentDictionary<string, (string Name, string ShortName)> _itemNameCache = new();
 
     // ========================================================================
     // Public API
@@ -271,10 +273,7 @@ public static class RestorationSummaryService
         if (string.IsNullOrEmpty(templateId))
             return;
 
-        lock (_lock)
-        {
-            _itemNameCache[templateId] = (name ?? "Unknown", shortName ?? name ?? "???");
-        }
+        _itemNameCache[templateId] = (name ?? "Unknown", shortName ?? name ?? "???");
     }
 
     // ========================================================================
@@ -307,12 +306,9 @@ public static class RestorationSummaryService
     /// </summary>
     private static (string Name, string ShortName) GetItemName(string templateId)
     {
-        lock (_lock)
+        if (_itemNameCache.TryGetValue(templateId, out var cached))
         {
-            if (_itemNameCache.TryGetValue(templateId, out var cached))
-            {
-                return cached;
-            }
+            return cached;
         }
 
         // Return template ID truncated as placeholder

@@ -83,8 +83,6 @@ public static class SnapshotSoundPlayer
     /// </summary>
     private static void Initialize()
     {
-        _initialized = true;
-
         try
         {
             // Try to find GUISounds type
@@ -173,6 +171,12 @@ public static class SnapshotSoundPlayer
         catch (Exception ex)
         {
             Plugin.Log.LogWarning($"Could not initialize GUISounds: {ex.Message}");
+        }
+        finally
+        {
+            // Always mark initialized to prevent infinite retry on every keybind press.
+            // If initialization failed, the null checks in PlaySnapshotSound() handle it gracefully.
+            _initialized = true;
         }
     }
 }

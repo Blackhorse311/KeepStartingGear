@@ -19,6 +19,7 @@ using System.Linq;
 using System.Text;
 using UnityEngine;
 using Blackhorse311.KeepStartingGear.Services;
+using Blackhorse311.KeepStartingGear.Utilities;
 
 namespace Blackhorse311.KeepStartingGear.Components;
 
@@ -66,13 +67,15 @@ public class SummaryOverlay : MonoBehaviour
     private const int ItemFontSize = 14;
 
     // ========================================================================
-    // Colors
+    // Colors - Now uses ThemeService for theming support
     // ========================================================================
 
-    private static readonly Color PanelBackground = new Color(0.1f, 0.1f, 0.15f, 0.95f);
-    private static readonly Color HeaderColor = new Color(0.9f, 0.9f, 0.9f, 1f);
-    private static readonly Color RestoredColor = new Color(0.4f, 0.9f, 0.4f, 1f);     // Green
-    private static readonly Color LostColor = new Color(0.9f, 0.4f, 0.4f, 1f);         // Red
+    private Color PanelBackground => ThemeService.GetCurrentTheme().PanelBackground;
+    private Color HeaderColor => ThemeService.GetCurrentTheme().PanelText;
+    private Color RestoredColor => ThemeService.GetCurrentTheme().SuccessText;
+    private Color LostColor => ThemeService.GetCurrentTheme().ErrorText;
+
+    // FiR color stays gold and divider stays gray across all themes (theme-independent)
     private static readonly Color FiRColor = new Color(1f, 0.85f, 0.3f, 1f);           // Gold for FiR
     private static readonly Color DividerColor = new Color(0.5f, 0.5f, 0.5f, 0.5f);
 
@@ -86,6 +89,10 @@ public class SummaryOverlay : MonoBehaviour
     private GUIStyle _lostStyle;
     private GUIStyle _firStyle;
     private GUIStyle _closeButtonStyle;
+    private GUIStyle _mapStyle;
+    private GUIStyle _centerStyle;
+    private GUIStyle _hintStyle;
+    private GUIStyle _moreStyle;
     private bool _stylesInitialized;
 
     // ========================================================================
@@ -179,6 +186,10 @@ public class SummaryOverlay : MonoBehaviour
     // Private Methods
     // ========================================================================
 
+    // Fallback creation path for when component is accessed before Plugin.Awake().
+    // Plugin.Awake() is the primary creation path; this handles rare edge cases
+    // where Show() is called before the plugin has fully initialized.
+    // DontDestroyOnLoad in Awake() is intentional to survive scene transitions.
     private static void EnsureInstance()
     {
         if (Instance == null)
@@ -250,6 +261,32 @@ public class SummaryOverlay : MonoBehaviour
             fontSize = 12
         };
 
+        _mapStyle = new GUIStyle(GUI.skin.label)
+        {
+            alignment = TextAnchor.MiddleCenter,
+            fontStyle = FontStyle.Italic
+        };
+        _mapStyle.normal.textColor = new Color(0.7f, 0.7f, 0.7f, 1f);
+
+        _centerStyle = new GUIStyle(GUI.skin.label)
+        {
+            alignment = TextAnchor.MiddleCenter
+        };
+        _centerStyle.normal.textColor = new Color(0.7f, 0.7f, 0.7f, 1f);
+
+        _hintStyle = new GUIStyle(GUI.skin.label)
+        {
+            alignment = TextAnchor.MiddleCenter,
+            fontSize = 11
+        };
+        _hintStyle.normal.textColor = new Color(0.5f, 0.5f, 0.5f, 1f);
+
+        _moreStyle = new GUIStyle(GUI.skin.label)
+        {
+            fontStyle = FontStyle.Italic
+        };
+        _moreStyle.normal.textColor = new Color(0.6f, 0.6f, 0.6f, 1f);
+
         _stylesInitialized = true;
     }
 
@@ -281,10 +318,10 @@ public class SummaryOverlay : MonoBehaviour
         Rect panelRect = new Rect(x, y, PanelWidth, panelHeight);
 
         // Draw background
-        DrawRect(panelRect, PanelBackground * new Color(1, 1, 1, alpha));
+        GuiDrawingHelper.DrawRect(panelRect, PanelBackground * new Color(1, 1, 1, alpha));
 
         // Draw border
-        DrawRectBorder(panelRect, new Color(0.4f, 0.4f, 0.5f, alpha), 2);
+        GuiDrawingHelper.DrawRectBorder(panelRect, new Color(0.4f, 0.4f, 0.5f, alpha), 2);
 
         // Content area
         GUILayout.BeginArea(new Rect(x + 15, y + 15, PanelWidth - 30, panelHeight - 30));
@@ -295,17 +332,12 @@ public class SummaryOverlay : MonoBehaviour
         GUILayout.Space(5);
 
         // Map name
-        var mapStyle = new GUIStyle(GUI.skin.label)
-        {
-            alignment = TextAnchor.MiddleCenter,
-            fontStyle = FontStyle.Italic
-        };
-        mapStyle.normal.textColor = new Color(0.7f, 0.7f, 0.7f, alpha);
-        GUILayout.Label($"Death on {_currentSummary.MapName}", mapStyle);
+        _mapStyle.normal.textColor = new Color(0.7f, 0.7f, 0.7f, alpha);
+        GUILayout.Label($"Death on {_currentSummary.MapName}", _mapStyle);
         GUILayout.Space(10);
 
         // Divider
-        DrawHorizontalLine(DividerColor * new Color(1, 1, 1, alpha));
+        GuiDrawingHelper.DrawHorizontalLine(DividerColor * new Color(1, 1, 1, alpha));
         GUILayout.Space(10);
 
         // Scrollable content
@@ -340,25 +372,16 @@ public class SummaryOverlay : MonoBehaviour
         // No items case
         if (_currentSummary.RestoredCount == 0 && _currentSummary.LostCount == 0)
         {
-            var centerStyle = new GUIStyle(GUI.skin.label)
-            {
-                alignment = TextAnchor.MiddleCenter
-            };
-            centerStyle.normal.textColor = new Color(0.7f, 0.7f, 0.7f, alpha);
-            GUILayout.Label("No items to display.", centerStyle);
+            _centerStyle.normal.textColor = new Color(0.7f, 0.7f, 0.7f, alpha);
+            GUILayout.Label("No items to display.", _centerStyle);
         }
 
         GUILayout.EndScrollView();
 
         // Close hint
         GUILayout.FlexibleSpace();
-        var hintStyle = new GUIStyle(GUI.skin.label)
-        {
-            alignment = TextAnchor.MiddleCenter,
-            fontSize = 11
-        };
-        hintStyle.normal.textColor = new Color(0.5f, 0.5f, 0.5f, alpha);
-        GUILayout.Label("Click or press ESC to dismiss", hintStyle);
+        _hintStyle.normal.textColor = new Color(0.5f, 0.5f, 0.5f, alpha);
+        GUILayout.Label("Click or press ESC to dismiss", _hintStyle);
 
         GUILayout.EndArea();
 
@@ -367,38 +390,38 @@ public class SummaryOverlay : MonoBehaviour
 
     private void DrawItemList(List<ItemSummary> items, GUIStyle style, float alpha, int maxItems = 10, bool showFiR = false)
     {
-        int displayed = 0;
+        // Save original colors to avoid mutating shared GUIStyle references
+        Color originalStyleColor = style.normal.textColor;
+        Color originalFirStyleColor = _firStyle.normal.textColor;
+
         foreach (var item in items.Take(maxItems))
         {
-            var displayStyle = style;
-
-            // Highlight FiR items
+            // Use GUI.contentColor for per-item color rather than mutating the shared style
             if (showFiR && item.WasFoundInRaid)
             {
-                displayStyle = _firStyle;
-                displayStyle.normal.textColor = FiRColor * new Color(1, 1, 1, alpha);
+                _firStyle.normal.textColor = FiRColor * new Color(1, 1, 1, alpha);
+                string countStr = item.Count > 1 ? $" x{item.Count}" : "";
+                string firStr = " [FiR]";
+                GUILayout.Label($"  • {item.ShortName}{countStr}{firStr}", _firStyle);
             }
             else
             {
-                displayStyle.normal.textColor = style.normal.textColor * new Color(1, 1, 1, alpha);
+                style.normal.textColor = originalStyleColor * new Color(1, 1, 1, alpha);
+                string countStr = item.Count > 1 ? $" x{item.Count}" : "";
+                GUILayout.Label($"  • {item.ShortName}{countStr}", style);
             }
 
-            string countStr = item.Count > 1 ? $" x{item.Count}" : "";
-            string firStr = (showFiR && item.WasFoundInRaid) ? " [FiR]" : "";
-
-            GUILayout.Label($"  • {item.ShortName}{countStr}{firStr}", displayStyle);
-            displayed++;
         }
+
+        // Restore original colors after loop to avoid side effects on subsequent calls
+        style.normal.textColor = originalStyleColor;
+        _firStyle.normal.textColor = originalFirStyleColor;
 
         // Show overflow indicator
         if (items.Count > maxItems)
         {
-            var moreStyle = new GUIStyle(GUI.skin.label)
-            {
-                fontStyle = FontStyle.Italic
-            };
-            moreStyle.normal.textColor = new Color(0.6f, 0.6f, 0.6f, alpha);
-            GUILayout.Label($"  ... and {items.Count - maxItems} more items", moreStyle);
+            _moreStyle.normal.textColor = new Color(0.6f, 0.6f, 0.6f, alpha);
+            GUILayout.Label($"  ... and {items.Count - maxItems} more items", _moreStyle);
         }
     }
 
@@ -424,33 +447,4 @@ public class SummaryOverlay : MonoBehaviour
         return Math.Min(height, MaxPanelHeight);
     }
 
-    // ========================================================================
-    // Drawing Utilities
-    // ========================================================================
-
-    private void DrawRect(Rect rect, Color color)
-    {
-        Color oldColor = GUI.color;
-        GUI.color = color;
-        GUI.DrawTexture(rect, Texture2D.whiteTexture);
-        GUI.color = oldColor;
-    }
-
-    private void DrawRectBorder(Rect rect, Color color, int thickness)
-    {
-        // Top
-        DrawRect(new Rect(rect.x, rect.y, rect.width, thickness), color);
-        // Bottom
-        DrawRect(new Rect(rect.x, rect.yMax - thickness, rect.width, thickness), color);
-        // Left
-        DrawRect(new Rect(rect.x, rect.y, thickness, rect.height), color);
-        // Right
-        DrawRect(new Rect(rect.xMax - thickness, rect.y, thickness, rect.height), color);
-    }
-
-    private void DrawHorizontalLine(Color color)
-    {
-        Rect rect = GUILayoutUtility.GetRect(1, 1, GUILayout.ExpandWidth(true));
-        DrawRect(rect, color);
-    }
 }

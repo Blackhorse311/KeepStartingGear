@@ -8,6 +8,19 @@
 // AUTHOR: Blackhorse311
 // LICENSE: MIT
 // ============================================================================
+//
+// ============================================================================
+// SYNC NOTICE: These test models mirror production models from:
+//   - src/server/Models/SerializedInventory.cs (SerializedItem, ItemUpd, etc.)
+//   - src/server/Models/InventorySnapshot.cs (InventorySnapshot)
+//   - src/server/Converters/LocationConverter.cs (LocationConverter, ItemLocation)
+//
+// These are kept separate because the test project targets .NET 6.0 while
+// the client targets .NET Framework 4.7.1, and client models reference
+// EFT/BepInEx assemblies not available in the test project.
+//
+// IMPORTANT: If production models change, update these to match.
+// ============================================================================
 
 using Newtonsoft.Json;
 using System;

@@ -96,28 +96,54 @@ public class SummaryFileWatcher : MonoBehaviour
 
     private void CheckForSummaryFile()
     {
+        string json;
         try
         {
-            if (!File.Exists(_summaryFilePath))
-                return;
-
-            // File size check to prevent DoS via large files
+            // File size check to prevent DoS via large files.
+            // Use FileInfo before reading - if the file doesn't exist this throws FileNotFoundException.
             var fileInfo = new FileInfo(_summaryFilePath);
             if (fileInfo.Length > MaxSummaryFileSize)
             {
                 Plugin.Log.LogWarning($"[SummaryWatcher] Summary file too large ({fileInfo.Length} bytes), deleting");
-                File.Delete(_summaryFilePath);
+                try { File.Delete(_summaryFilePath); } catch { /* Best effort */ }
                 return;
             }
 
-            // Read the summary file
-            string json = File.ReadAllText(_summaryFilePath);
+            // Read the summary file directly - no File.Exists check (TOCTOU).
+            json = File.ReadAllText(_summaryFilePath);
+        }
+        catch (FileNotFoundException)
+        {
+            // No summary file present yet - this is the common case, no log needed.
+            return;
+        }
+        catch (DirectoryNotFoundException)
+        {
+            // Snapshot directory doesn't exist yet - normal on first run.
+            return;
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.LogWarning($"[SummaryWatcher] Failed to read summary file: {ex.Message}");
+            return;
+        }
 
-            // Delete the file immediately to prevent re-reading
+        // Delete the file immediately to prevent re-reading.
+        try
+        {
             File.Delete(_summaryFilePath);
+        }
+        catch (Exception deleteEx)
+        {
+            Plugin.Log.LogDebug($"[SummaryWatcher] Could not delete summary file: {deleteEx.Message}");
+        }
 
-            // Parse the summary
-            var summary = JsonConvert.DeserializeObject<RestorationSummaryData>(json);
+        // Parse the summary.
+        try
+        {
+            // SEC-001: Explicitly disable TypeNameHandling to prevent unsafe deserialization
+            var summary = JsonConvert.DeserializeObject<RestorationSummaryData>(json,
+                new JsonSerializerSettings { TypeNameHandling = TypeNameHandling.None });
             if (summary != null)
             {
                 Plugin.Log.LogDebug($"[SummaryWatcher] Found summary file: {summary.RestoredCount} restored, {summary.LostCount} lost");
@@ -129,17 +155,7 @@ public class SummaryFileWatcher : MonoBehaviour
         }
         catch (Exception ex)
         {
-            Plugin.Log.LogWarning($"[SummaryWatcher] Failed to process summary file: {ex.Message}");
-
-            // NEW-005: Try to delete the file even if parsing failed, with logging
-            try
-            {
-                File.Delete(_summaryFilePath);
-            }
-            catch (Exception deleteEx)
-            {
-                Plugin.Log.LogDebug($"[SummaryWatcher] Could not delete summary file: {deleteEx.Message}");
-            }
+            Plugin.Log.LogWarning($"[SummaryWatcher] Failed to parse summary file: {ex.Message}");
         }
     }
 

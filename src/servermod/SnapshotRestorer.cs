@@ -135,6 +135,16 @@ public class SnapshotRestorer<TLogger>
         new(@"^[a-zA-Z0-9\-_]+$", System.Text.RegularExpressions.RegexOptions.Compiled);
 
     /// <summary>
+    /// Cached JsonSerializerOptions for case-insensitive deserialization.
+    /// System.Text.Json rebuilds type metadata caches per options instance,
+    /// so reusing one instance avoids redundant work on every item.
+    /// </summary>
+    private static readonly JsonSerializerOptions CaseInsensitiveJsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
+
+    /// <summary>
     /// Creates a new SnapshotRestorer instance.
     /// </summary>
     /// <param name="logger">Logger for output messages.</param>
@@ -233,10 +243,7 @@ public class SnapshotRestorer<TLogger>
         // Log preview for debugging
         _logger.Debug($"{Constants.LogPrefix} Raw snapshot JSON preview: {snapshotJson.Substring(0, Math.Min(500, snapshotJson.Length))}...");
 
-        var snapshot = JsonSerializer.Deserialize<InventorySnapshot>(snapshotJson, new JsonSerializerOptions
-        {
-            PropertyNameCaseInsensitive = true
-        });
+        var snapshot = JsonSerializer.Deserialize<InventorySnapshot>(snapshotJson, CaseInsensitiveJsonOptions);
 
         if (snapshot == null || snapshot.Items == null || snapshot.Items.Count == 0)
         {
@@ -896,6 +903,9 @@ public class SnapshotRestorer<TLogger>
         }
 
         // Copy update data
+        // CRIT-2 FIX: snapshotItem.Upd is now typed UpdData instead of object?/JsonElement.
+        // Serialize the typed UpdData to JSON, then deserialize as SPT's Upd type.
+        // StackObjectsCount is now a first-class property so no fallback extraction is needed.
         if (snapshotItem.Upd != null)
         {
             try
@@ -903,18 +913,7 @@ public class SnapshotRestorer<TLogger>
                 var updJson = JsonSerializer.Serialize(snapshotItem.Upd);
                 _logger.Debug($"{Constants.LogPrefix} [UPD] Raw Upd JSON for {snapshotItem.Id}: {updJson}");
 
-                newItem.Upd = JsonSerializer.Deserialize<Upd>(updJson, new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true
-                });
-
-                // Try to extract StackObjectsCount if standard deserialization missed it
-                if (newItem.Upd != null &&
-                    (newItem.Upd.StackObjectsCount == null || newItem.Upd.StackObjectsCount == 0) &&
-                    snapshotItem.Upd is JsonElement updElement)
-                {
-                    TryExtractStackCount(updElement, newItem, snapshotItem.Id);
-                }
+                newItem.Upd = JsonSerializer.Deserialize<Upd>(updJson, CaseInsensitiveJsonOptions);
             }
             catch (Exception ex)
             {
@@ -923,22 +922,6 @@ public class SnapshotRestorer<TLogger>
         }
 
         return newItem;
-    }
-
-    /// <summary>
-    /// Attempts to extract StackObjectsCount from a JsonElement.
-    /// </summary>
-    private void TryExtractStackCount(JsonElement updElement, Item newItem, string? itemId)
-    {
-        if (updElement.TryGetProperty("StackObjectsCount", out var stackProp) ||
-            updElement.TryGetProperty("stackObjectsCount", out stackProp))
-        {
-            if (stackProp.TryGetInt32(out int stackCount) && stackCount > 0 && newItem.Upd != null)
-            {
-                newItem.Upd.StackObjectsCount = stackCount;
-                _logger.Debug($"{Constants.LogPrefix} [UPD] Manually extracted StackObjectsCount={stackCount} for {itemId}");
-            }
-        }
     }
 
     /// <summary>

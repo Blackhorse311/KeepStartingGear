@@ -22,9 +22,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text.RegularExpressions;
 using Blackhorse311.KeepStartingGear.Configuration;
 using Blackhorse311.KeepStartingGear.Models;
+using Blackhorse311.KeepStartingGear.Utilities;
 using Newtonsoft.Json;
 
 namespace Blackhorse311.KeepStartingGear.Services;
@@ -52,13 +52,6 @@ public class SnapshotHistory
     // ========================================================================
 
     private readonly string _snapshotDirectory;
-
-    /// <summary>
-    /// Session ID validation regex - prevents path traversal attacks.
-    /// Only allows alphanumeric characters, hyphens, and underscores.
-    /// </summary>
-    private static readonly Regex SessionIdValidator =
-        new(@"^[a-zA-Z0-9\-_]+$", RegexOptions.Compiled);
 
     /// <summary>Maximum file size for snapshot files (10MB).</summary>
     private const long MaxSnapshotFileSize = 10 * 1024 * 1024;
@@ -158,10 +151,25 @@ public class SnapshotHistory
             }
 
             // Step 3: Write the snapshot content we already read to .1.json (most recent backup)
-            // We already have the content in memory, so no TOCTOU race here
+            // We already have the content in memory, so no TOCTOU race here.
+            // Use atomic write (temp-then-rename) to prevent corrupt backup files if process crashes.
             string backupPath = GetHistoryPath(sessionId, 1);
-            try { File.Delete(backupPath); } catch (FileNotFoundException) { }
-            File.WriteAllBytes(backupPath, currentContent);
+            string backupTempPath = backupPath + ".tmp." + Path.GetRandomFileName();
+            try
+            {
+                File.WriteAllBytes(backupTempPath, currentContent);
+                try { File.Delete(backupPath); } catch (FileNotFoundException) { }
+                File.Move(backupTempPath, backupPath);
+                backupTempPath = null; // Clear so finally block doesn't delete it
+            }
+            finally
+            {
+                if (backupTempPath != null)
+                {
+                    try { File.Delete(backupTempPath); }
+                    catch { /* Best effort cleanup */ }
+                }
+            }
 
             Plugin.Log.LogDebug($"[SnapshotHistory] Backed up snapshot to {Path.GetFileName(backupPath)}");
         }
@@ -287,9 +295,13 @@ public class SnapshotHistory
             for (int i = 1; i < maxHistory; i++)
             {
                 string historyPath = GetHistoryPath(sessionId, i);
-                if (File.Exists(historyPath))
+                try
                 {
                     File.Delete(historyPath);
+                }
+                catch (FileNotFoundException)
+                {
+                    // File didn't exist - that's fine
                 }
             }
 
@@ -330,7 +342,8 @@ public class SnapshotHistory
             }
 
             string json = File.ReadAllText(path);
-            return JsonConvert.DeserializeObject<InventorySnapshot>(json);
+            var settings = new JsonSerializerSettings { TypeNameHandling = TypeNameHandling.None };
+            return JsonConvert.DeserializeObject<InventorySnapshot>(json, settings);
         }
         catch (Exception ex)
         {
@@ -345,10 +358,11 @@ public class SnapshotHistory
 
     /// <summary>
     /// Validates a session ID to prevent path traversal attacks.
+    /// Delegates to the shared <see cref="Utilities.SessionIdValidator"/> utility.
     /// </summary>
     private static bool IsValidSessionId(string sessionId)
     {
-        return !string.IsNullOrEmpty(sessionId) && SessionIdValidator.IsMatch(sessionId);
+        return SessionIdValidator.IsValid(sessionId);
     }
 
     private string GetSnapshotPath(string sessionId)

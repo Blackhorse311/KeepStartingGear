@@ -241,6 +241,14 @@ public class ProfileService
     // Inventory Restoration
     // ========================================================================
 
+    // ========================================================================
+    // LEGACY CODE: Client-side restoration (no longer active)
+    // The server-side SnapshotRestorer now handles all restoration.
+    // PostRaidInventoryPatch (the only caller) is [DisablePatch].
+    // Kept for reference. Non-atomic File.WriteAllText (CRIT-8) is noted
+    // but not fixed since this code path is not executed.
+    // ========================================================================
+
     /// <summary>
     /// Restores inventory items to a profile by directly editing the JSON file.
     /// </summary>
@@ -264,6 +272,7 @@ public class ProfileService
     ///   <item>Save the modified profile</item>
     /// </list>
     /// </remarks>
+    [System.Obsolete("Legacy client-side restoration. Server-side SnapshotRestorer is the active path. PostRaidInventoryPatch is [DisablePatch].", false)]
     public bool RestoreInventoryToProfile(InventorySnapshot snapshot)
     {
         try
@@ -539,6 +548,17 @@ public class ProfileService
     // Session ID
     // ========================================================================
 
+    /// <summary>Cached session ID to avoid repeated profile file reads.</summary>
+    /// <remarks>Volatile for thread safety: may be read from UI thread and patch threads.</remarks>
+    private volatile string _cachedSessionId;
+
+    /// <summary>Ticks timestamp of when session ID was last resolved (for atomic read/write).</summary>
+    /// <remarks>Uses long (ticks) instead of DateTime because volatile requires primitive types.</remarks>
+    private long _sessionIdCacheTimeTicks;
+
+    /// <summary>How long to cache the session ID before re-checking.</summary>
+    private static readonly TimeSpan SessionIdCacheTtl = TimeSpan.FromSeconds(30);
+
     /// <summary>
     /// Gets the current session ID (profile ID) for the active player.
     /// This is used to identify which snapshot file to use.
@@ -546,13 +566,21 @@ public class ProfileService
     /// <returns>The session ID string, or null if not available</returns>
     public string GetSessionId()
     {
+        // W-20 FIX: Cache session ID to avoid parsing profile JSON on every call
+        var cachedTicks = System.Threading.Interlocked.Read(ref _sessionIdCacheTimeTicks);
+        if (_cachedSessionId != null && (DateTime.UtcNow.Ticks - cachedTicks) < SessionIdCacheTtl.Ticks)
+            return _cachedSessionId;
+
         try
         {
             // Try to get from the most recent profile
             string profileFilePath = GetMostRecentProfileFile();
             if (!string.IsNullOrEmpty(profileFilePath))
             {
-                return GetProfileId(profileFilePath);
+                string result = GetProfileId(profileFilePath);
+                _cachedSessionId = result;
+                System.Threading.Interlocked.Exchange(ref _sessionIdCacheTimeTicks, DateTime.UtcNow.Ticks);
+                return result;
             }
 
             return null;
@@ -562,5 +590,14 @@ public class ProfileService
             Plugin.Log.LogError($"Failed to get session ID: {ex.Message}");
             return null;
         }
+    }
+
+    /// <summary>
+    /// Clears the cached session ID, forcing a re-read on next access.
+    /// Call this when the session changes (new raid start).
+    /// </summary>
+    public void InvalidateSessionCache()
+    {
+        _cachedSessionId = null;
     }
 }

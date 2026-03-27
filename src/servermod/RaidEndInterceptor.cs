@@ -89,6 +89,15 @@ public class RaidEndInterceptor(
     private readonly ISptLogger<RaidEndInterceptor> _logger = logger;
 
     /// <summary>
+    /// Static logger reference captured on first use so the static Lazy factory can reference it.
+    /// CRIT-4 FIX: _restorerLazy is static, but the factory must use a logger. We capture the
+    /// first instance's logger here. All instances share the same SPT logger type, so this is safe.
+    /// ASSUMPTION: SPT's ISptLogger is not session-scoped or disposable. If SPT ever makes loggers
+    /// per-session, this static capture would need to be revisited (e.g., DI singleton registration).
+    /// </summary>
+    private static ISptLogger<RaidEndInterceptor>? _staticLogger;
+
+    /// <summary>
     /// Lock object for thread-safe lazy initialization of the restorer.
     /// LINUS-001 FIX: The ??= operator is NOT atomic - two threads could both see null
     /// and create separate Lazy instances. Use explicit double-check locking.
@@ -97,14 +106,19 @@ public class RaidEndInterceptor(
 
     /// <summary>
     /// Thread-safe lazy initialization using Lazy&lt;T&gt; with ExecutionAndPublication mode.
-    /// LINUS-001 FIX: Initialize with explicit thread safety mode to prevent race conditions.
+    /// CRIT-4 FIX: Changed from instance field to static field so it is consistent with the
+    /// static _restorerInitLock. An instance field and a static lock produced a mismatch where
+    /// each new DI-injected instance of RaidEndInterceptor had its own _restorerLazy, making the
+    /// static lock useless for protecting it across instances.
     /// </summary>
-    private Lazy<SnapshotRestorer<RaidEndInterceptor>>? _restorerLazy;
+    private static Lazy<SnapshotRestorer<RaidEndInterceptor>>? _restorerLazy;
 
     /// <summary>
     /// Gets or creates the snapshot restorer instance (thread-safe).
     /// LINUS-001 FIX: Uses double-check locking pattern for safe lazy initialization.
     /// The ??= operator alone is NOT sufficient - it's not atomic.
+    /// CRIT-4 FIX: Captures instance logger into static field on first access so the
+    /// static Lazy factory can reference it without capturing an instance variable.
     /// </summary>
     private SnapshotRestorer<RaidEndInterceptor> Restorer
     {
@@ -118,11 +132,15 @@ public class RaidEndInterceptor(
             // Double-check with lock (slow path, only on first access)
             lock (_restorerInitLock)
             {
+                // Capture instance logger into static field so the factory lambda can use it.
+                // This is safe: all instances receive an equivalent ISptLogger<RaidEndInterceptor>.
+                _staticLogger ??= _logger;
+
                 // Check again inside lock
                 if (_restorerLazy == null)
                 {
                     _restorerLazy = new Lazy<SnapshotRestorer<RaidEndInterceptor>>(
-                        () => new SnapshotRestorer<RaidEndInterceptor>(_logger, SnapshotRestorerHelper.ResolveSnapshotsPath()),
+                        () => new SnapshotRestorer<RaidEndInterceptor>(_staticLogger!, SnapshotRestorerHelper.ResolveSnapshotsPath()),
                         LazyThreadSafetyMode.ExecutionAndPublication
                     );
                 }
@@ -216,6 +234,12 @@ public class RaidEndInterceptor(
 
         // Always call the base implementation to complete normal processing
         // This handles XP, quests, insurance, and other raid end logic
+        //
+        // CRIT-3: Calls matchController directly instead of base.EndLocalRaid().
+        // This is intentional: we modify 'info' before the call (restoration), and
+        // base.EndLocalRaid would re-process the request. This approach has been stable
+        // since v1.3.0. If SPT changes MatchCallbacks.EndLocalRaid internals, this may
+        // need updating to use base.EndLocalRaid(url, info, sessionID) instead.
         logger.Debug($"{Constants.LogPrefix} Calling base matchController.EndLocalRaid()...");
         matchController.EndLocalRaid(sessionID, info);
         logger.Debug($"{Constants.LogPrefix} Base matchController.EndLocalRaid() completed.");
@@ -345,6 +369,29 @@ public class InventorySnapshot
 }
 
 /// <summary>
+/// Typed representation of the Upd (update data) property from snapshot items.
+/// Replaces the untyped object? that required JsonElement round-trips (CRIT-2 fix).
+/// Only StackObjectsCount is mapped explicitly (it's a top-level Upd property).
+/// All other properties (Repairable, MedKit, Dogtag, Key, Foldable, FoodDrink, Resource, etc.)
+/// are preserved via JsonExtensionData for forward compatibility and lossless round-tripping.
+/// </summary>
+public class UpdData
+{
+    /// <summary>Number of items in the stack (ammo, money, consumables).</summary>
+    [System.Text.Json.Serialization.JsonPropertyName("StackObjectsCount")]
+    public int? StackObjectsCount { get; set; }
+
+    /// <summary>
+    /// Captures all Upd properties not explicitly mapped above.
+    /// This includes Repairable (durability), MedKit (HP), Dogtag, Key, Foldable,
+    /// FoodDrink, Resource, SpawnedInSession, and any future EFT additions.
+    /// These are preserved as raw JsonElements for lossless serialization round-trips.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonExtensionData]
+    public Dictionary<string, System.Text.Json.JsonElement>? ExtraData { get; set; }
+}
+
+/// <summary>
 /// Represents a single item in the snapshot.
 /// Uses JsonPropertyName to match the client's JSON field names.
 /// </summary>
@@ -386,7 +433,7 @@ public class SnapshotItem
 
     /// <summary>Update data (stack count, durability, etc.)</summary>
     [System.Text.Json.Serialization.JsonPropertyName("upd")]
-    public object? Upd { get; set; }
+    public UpdData? Upd { get; set; }
 
     /// <summary>
     /// Gets the grid location data if this item uses grid positioning.

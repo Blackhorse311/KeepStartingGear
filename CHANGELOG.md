@@ -5,6 +5,77 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.8] - 2026-03-27
+
+### Changed - Code Review Hardening and Architecture Refactor
+
+This release applies fixes from a comprehensive code review (5-Legends panel) and decomposes the InventoryService god class into focused, single-responsibility services. No user-facing behavior changes; all improvements are internal quality, security, and performance.
+
+#### Architecture: InventoryService Decomposition
+
+**Problem:** `InventoryService.cs` was 2,500+ lines handling serialization, grid capture, ammo capture, and insurance filtering in a single class. This made the code difficult to maintain, test, and reason about.
+
+**Fix:** Extracted four focused services and two utilities:
+
+| New File | Lines | Responsibility |
+|----------|-------|----------------|
+| `AmmoCaptureStrategy.cs` | 195 | Magazine and ammo box capture |
+| `GridCaptureStrategy.cs` | 411 | Container grid capture with nested slot handling |
+| `InsuranceFilter.cs` | 723 | Insurance item detection via reflection |
+| `ItemSerializer.cs` | 828 | EFT Item to SerializedItem conversion |
+| `SessionIdValidator.cs` | 49 | Shared session ID validation (was duplicated in 4 files) |
+| `GuiDrawingHelper.cs` | 62 | GUI drawing utility |
+
+`InventoryService.cs` reduced from 2,500+ lines to ~1,200 lines. Net reduction: ~1,960 lines.
+
+#### Security Fixes (3)
+
+- **SEC-001: Unsafe JSON Deserialization**: Added `TypeNameHandling.None` to all `JsonConvert.DeserializeObject` calls in `SnapshotManager.cs` and `LoadoutProfiles.cs`. Without this, malicious JSON with `$type` properties could instantiate arbitrary types.
+
+- **SEC-002: Recursion Bomb in InsuranceFilter**: Added depth limit (5 levels) and visited-object set to `ExtractInsuredIdsFromObject()`. Without bounds, deeply nested or circular object graphs could cause stack overflow.
+
+- **SEC-003: Session ID Max Length**: `SessionIdValidator` now enforces a 128-character maximum length, preventing oversized session IDs from being used in file path construction.
+
+#### Bug Fixes (3)
+
+- **ProtectionIndicator TOCTOU Race**: Replaced `File.Exists()` + read pattern with try-catch on `GetLastWriteTimeUtc()`. The previous pattern could fail if the snapshot file was deleted between the existence check and the read.
+
+- **SnapshotSoundPlayer Initialization Loop**: Moved `_initialized = true` to `finally` block in `Initialize()`. Previously, if initialization threw an exception, the flag was never set, causing infinite retry attempts on every frame.
+
+- **LoadoutProfiles Underscore Parsing**: Fixed profile name extraction for session IDs containing underscores. Previously used `string.Replace()` which broke when session IDs had underscores. Now uses `LastIndexOf()` to find the suffix boundary.
+
+#### Performance Improvements (4)
+
+- **Cached JsonSerializerOptions**: `SnapshotRestorer` now reuses a single `JsonSerializerOptions` instance instead of creating one per deserialization call.
+
+- **ProfileService Session Cache**: Session ID lookup now cached for 30 seconds with thread-safe `Interlocked` access, eliminating repeated profile JSON parsing during a raid.
+
+- **ProtectionIndicator File Cache**: Snapshot file metadata cached to skip redundant re-reads when checking for active snapshot.
+
+- **ValueCalculator Dictionary Lookup**: Replaced sequential if-chain with `Dictionary.TryGetValue()` for item category classification.
+
+#### Code Quality
+
+- **UpdData Cleanup**: Removed `Durability`, `MaxDurability`, and `SpawnedInSession` from `UpdData` model. Only `StackObjectsCount` is a top-level `upd` property; durability is handled by the restoration algorithm directly.
+
+- **Session ID Validation Consolidated**: Four files had duplicate regex patterns for session ID validation. Now all delegate to shared `SessionIdValidator.IsValid()`.
+
+- **SnapshotRestorationState Enhancement**: Added `HasEntry(sessionId)` method for the `SetInventory` override to check whether `RaidEndInterceptor` already processed the session.
+
+### Technical
+
+- InventoryService decomposed into 4 services + 2 utilities (net -1,960 lines)
+- All 48 tests pass (10 serialization + 38 restoration algorithm)
+- In-game verified: 2 raids, both deaths restored correctly (42 items)
+- Client DLL rebuilt; server DLL rebuilt
+- No snapshot format changes; fully backwards compatible
+
+### Compatibility
+
+- SPT 4.0.x (tested on 4.0.11)
+
+---
+
 ## [2.0.7] - 2026-02-19
 
 ### Fixed - SVM Compatibility and Scabbard Preservation

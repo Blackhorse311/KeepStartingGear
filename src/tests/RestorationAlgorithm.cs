@@ -324,7 +324,9 @@ public static class RestorationAlgorithm
         // Modern format: includedSlotIds is authoritative
         if (includedSlotIds != null)
         {
-            // Empty set = user explicitly selected no slots = normal death
+            // The explicit Count == 0 check documents intent: empty set = no slots managed.
+            // The production code (SnapshotRestorer.IsSlotManaged) handles this implicitly
+            // via HashSet.Contains() returning false for empty sets. Both are equivalent.
             if (includedSlotIds.Count == 0)
             {
                 return false;

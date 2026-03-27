@@ -21,6 +21,7 @@ using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using Blackhorse311.KeepStartingGear.Models;
+using Blackhorse311.KeepStartingGear.Utilities;
 using Newtonsoft.Json;
 
 namespace Blackhorse311.KeepStartingGear.Services;
@@ -51,13 +52,6 @@ public class LoadoutProfiles
     // ========================================================================
 
     private readonly string _snapshotDirectory;
-
-    /// <summary>
-    /// Session ID validation regex - prevents path traversal attacks.
-    /// Only allows alphanumeric characters, hyphens, and underscores.
-    /// </summary>
-    private static readonly Regex SessionIdValidator =
-        new(@"^[a-zA-Z0-9\-_]+$", RegexOptions.Compiled);
 
     /// <summary>Maximum file size for profile files (10MB).</summary>
     private const long MaxProfileFileSize = 10 * 1024 * 1024;
@@ -234,12 +228,17 @@ public class LoadoutProfiles
             foreach (var file in files)
             {
                 var info = new FileInfo(file);
-                string fileName = Path.GetFileNameWithoutExtension(file);
+                string withoutExtension = Path.GetFileNameWithoutExtension(file);
 
-                // Extract profile name from filename
+                // Extract profile name from filename by finding the exact session ID suffix.
                 // Format: profile_{name}_{sessionId}
-                string withoutSession = fileName.Replace($"_{sessionId}", "");
-                string profileName = withoutSession.Replace(ProfilePrefix, "");
+                // Use the known sessionId to find the boundary, since session IDs can contain underscores.
+                string expectedSuffix = $"_{sessionId}";
+                int suffixPos = withoutExtension.LastIndexOf(expectedSuffix, StringComparison.Ordinal);
+                if (suffixPos <= ProfilePrefix.Length)
+                    continue;
+
+                string profileName = withoutExtension.Substring(ProfilePrefix.Length, suffixPos - ProfilePrefix.Length);
 
                 profiles.Add(new LoadoutProfileInfo
                 {
@@ -350,17 +349,20 @@ public class LoadoutProfiles
 
     /// <summary>
     /// Validates a session ID to prevent path traversal attacks.
+    /// Delegates to the shared <see cref="Utilities.SessionIdValidator"/> utility.
     /// </summary>
     private static bool IsValidSessionId(string sessionId)
     {
-        return !string.IsNullOrEmpty(sessionId) && SessionIdValidator.IsMatch(sessionId);
+        return SessionIdValidator.IsValid(sessionId);
     }
 
     /// <summary>
     /// Sanitizes a profile name to be filesystem-safe.
-    /// Returns null if the name is invalid or empty after sanitization.
+    /// Uses a whitelist approach: only alphanumeric characters, spaces, and hyphens are kept.
     /// NEW-004: Uses whitelist approach for security.
     /// </summary>
+    /// <param name="name">The raw profile name to sanitize.</param>
+    /// <returns>The sanitized name (1-20 characters), or null if no valid characters remain.</returns>
     private string SanitizeProfileName(string name)
     {
         if (string.IsNullOrWhiteSpace(name))

@@ -27,6 +27,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using Blackhorse311.KeepStartingGear.Utilities;
 
 namespace Blackhorse311.KeepStartingGear.Components;
 
@@ -498,10 +499,10 @@ public class NotificationOverlay : MonoBehaviour
 
         // Draw a dark border around the notification for better visibility
         Color borderColor = new Color(0, 0, 0, 0.8f * alpha);
-        DrawRect(new Rect(x - 2, y - 2, BoxWidth + 4, BoxHeight + 4), borderColor);
+        GuiDrawingHelper.DrawRect(new Rect(x - 2, y - 2, BoxWidth + 4, BoxHeight + 4), borderColor);
 
         // Draw the colored background
-        DrawRect(boxRect, bgColor);
+        GuiDrawingHelper.DrawRect(boxRect, bgColor);
 
         // Draw the text
         _textStyle.normal.textColor = textColor;
@@ -511,24 +512,6 @@ public class NotificationOverlay : MonoBehaviour
     // ========================================================================
     // Utility Methods
     // ========================================================================
-
-    /// <summary>
-    /// Draws a filled rectangle using GUI.DrawTexture.
-    /// </summary>
-    /// <param name="rect">The rectangle to fill</param>
-    /// <param name="color">The fill color</param>
-    private void DrawRect(Rect rect, Color color)
-    {
-        // Save current GUI color
-        Color oldColor = GUI.color;
-
-        // Set color and draw
-        GUI.color = color;
-        GUI.DrawTexture(rect, Texture2D.whiteTexture);
-
-        // Restore original color
-        GUI.color = oldColor;
-    }
 
     /// <summary>
     /// Creates a solid-color texture for use in GUI rendering.
