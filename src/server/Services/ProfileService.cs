@@ -1,19 +1,16 @@
 // ============================================================================
 // Keep Starting Gear - Profile Service
 // ============================================================================
-// This service provides direct manipulation of SPT profile JSON files.
-// It handles locating, reading, and modifying player profile data.
+// This service locates SPT profile JSON files and resolves the active
+// session ID (profile ID) used for snapshot file naming.
 //
-// NOTE: This is a LEGACY service. The server-side mod (RaidEndInterceptor)
-// now handles profile modification during raid end processing, which is more
-// reliable. This client-side service is kept for reference and potential
-// fallback scenarios.
+// NOTE: Legacy client-side restoration (RestoreInventoryToProfile) has been
+// removed. The server-side mod (SnapshotRestorer) handles all restoration.
 //
 // KEY RESPONSIBILITIES:
 // 1. Locate the SPT profiles directory automatically
 // 2. Find the active player profile file
-// 3. Restore inventory items to a profile from a snapshot
-// 4. Create backups before modifying profiles
+// 3. Resolve the active session ID (profile ID)
 //
 // PROFILE LOCATION:
 // SPT profiles are stored in: {SPT_ROOT}\user\profiles\
@@ -32,33 +29,15 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Collections.Generic;
-using Blackhorse311.KeepStartingGear.Constants;
-using Blackhorse311.KeepStartingGear.Models;
-using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
 namespace Blackhorse311.KeepStartingGear.Services;
 
 /// <summary>
-/// Service responsible for directly manipulating SPT profile JSON files.
-/// Handles reading, modifying, and saving player inventory data.
+/// Service responsible for locating SPT profile JSON files and resolving the
+/// active session ID. Inventory restoration is handled server-side by
+/// SnapshotRestorer.
 /// </summary>
-/// <remarks>
-/// <para>
-/// <b>IMPORTANT:</b> This is legacy code. The preferred approach is to use
-/// the server-side mod which intercepts EndLocalRaid and modifies the profile
-/// during the normal raid end processing. Direct file manipulation from the
-/// client can cause sync issues if the server hasn't saved yet.
-/// </para>
-/// <para>
-/// This service remains useful for:
-/// </para>
-/// <list type="bullet">
-///   <item>Understanding the profile structure</item>
-///   <item>Testing and debugging</item>
-///   <item>Fallback if server-side restoration fails</item>
-/// </list>
-/// </remarks>
 public class ProfileService
 {
     // ========================================================================
@@ -234,286 +213,6 @@ public class ProfileService
         {
             Plugin.Log.LogError($"Error finding most recent profile: {ex.Message}");
             return null;
-        }
-    }
-
-    // ========================================================================
-    // Inventory Restoration
-    // ========================================================================
-
-    // ========================================================================
-    // LEGACY CODE: Client-side restoration (no longer active)
-    // The server-side SnapshotRestorer now handles all restoration.
-    // PostRaidInventoryPatch (the only caller) is [DisablePatch].
-    // Kept for reference. Non-atomic File.WriteAllText (CRIT-8) is noted
-    // but not fixed since this code path is not executed.
-    // ========================================================================
-
-    /// <summary>
-    /// Restores inventory items to a profile by directly editing the JSON file.
-    /// </summary>
-    /// <param name="snapshot">The inventory snapshot to restore from</param>
-    /// <returns>True if restoration succeeded, false otherwise</returns>
-    /// <remarks>
-    /// <para>
-    /// <b>WARNING:</b> This is a legacy method. Prefer server-side restoration
-    /// via RaidEndInterceptor which modifies the profile during normal raid
-    /// end processing.
-    /// </para>
-    /// <para>
-    /// Restoration process:
-    /// </para>
-    /// <list type="number">
-    ///   <item>Find and load the most recent profile file</item>
-    ///   <item>Create a backup before modification</item>
-    ///   <item>Find the Equipment container in the profile</item>
-    ///   <item>Remove existing equipment items</item>
-    ///   <item>Add items from the snapshot with remapped parent IDs</item>
-    ///   <item>Save the modified profile</item>
-    /// </list>
-    /// </remarks>
-    [System.Obsolete("Legacy client-side restoration. Server-side SnapshotRestorer is the active path. PostRaidInventoryPatch is [DisablePatch].", false)]
-    public bool RestoreInventoryToProfile(InventorySnapshot snapshot)
-    {
-        try
-        {
-            // Validate snapshot
-            if (snapshot == null || !snapshot.IsValid())
-            {
-                Plugin.Log.LogError("Invalid snapshot provided");
-                return false;
-            }
-
-            // Find the profile file to modify
-            string profileFilePath = GetMostRecentProfileFile();
-            if (string.IsNullOrEmpty(profileFilePath))
-            {
-                Plugin.Log.LogError("Could not find profile file to restore to");
-                return false;
-            }
-
-            Plugin.Log.LogDebug($"Restoring inventory to profile: {Path.GetFileName(profileFilePath)}");
-
-            // Create backup before modifying
-            CreateBackup(profileFilePath);
-
-            // Read and parse the profile JSON
-            string profileJson = File.ReadAllText(profileFilePath);
-            var profileObject = JObject.Parse(profileJson);
-
-            // Navigate to the PMC inventory
-            // Profile structure: characters -> pmc -> Inventory -> items
-            var pmcInventory = profileObject["characters"]?["pmc"]?["Inventory"];
-            if (pmcInventory == null)
-            {
-                Plugin.Log.LogError("Could not find PMC Inventory in profile");
-                return false;
-            }
-
-            var itemsArray = pmcInventory["items"] as JArray;
-            if (itemsArray == null)
-            {
-                Plugin.Log.LogError("Could not find items array in profile");
-                return false;
-            }
-
-            // ================================================================
-            // Find Equipment Container
-            // The Equipment container is the parent of all equipped items
-            // Template ID: 55d7217a4bdc2d86028b456d
-            // ================================================================
-            string equipmentId = null;
-            JToken equipmentToken = null;
-            foreach (var item in itemsArray)
-            {
-                var tpl = item["_tpl"]?.ToString();
-                if (tpl == TemplateIds.Equipment) // M-01 FIX: use constant
-                {
-                    equipmentId = item["_id"]?.ToString();
-                    equipmentToken = item;
-                    Plugin.Log.LogDebug($"Found Equipment container with ID: {equipmentId}");
-                    break;
-                }
-            }
-
-            if (string.IsNullOrEmpty(equipmentId))
-            {
-                Plugin.Log.LogError("Could not find Equipment container in profile");
-                return false;
-            }
-
-            // ================================================================
-            // Remove Existing Equipment Items
-            // We need to clear equipment slots before adding snapshot items
-            // ================================================================
-            var equipmentSlotNames = new[]
-            {
-                "FirstPrimaryWeapon", "SecondPrimaryWeapon", "Holster",
-                "Scabbard", "Backpack", "SecuredContainer", "TacticalVest",
-                "ArmorVest", "Pockets", "Headwear", "Earpiece", "Eyewear",
-                "FaceCover", "ArmBand", "Dogtag"
-            };
-
-            // Find items directly in equipment slots
-            var itemsToRemove = new List<JToken>();
-            foreach (var item in itemsArray)
-            {
-                var parentId = item["parentId"]?.ToString();
-                var slotId = item["slotId"]?.ToString();
-
-                // Remove if parent is Equipment and slot is an equipment slot
-                if (parentId == equipmentId && equipmentSlotNames.Contains(slotId))
-                {
-                    itemsToRemove.Add(item);
-                }
-            }
-
-            // Also remove all nested children (items inside containers, weapon mods, etc.)
-            // This requires multiple passes until no more children are found
-            bool foundMore = true;
-            while (foundMore)
-            {
-                foundMore = false;
-                var removedIds = itemsToRemove.Select(t => t["_id"]?.ToString()).ToList();
-
-                foreach (var item in itemsArray)
-                {
-                    if (!itemsToRemove.Contains(item))
-                    {
-                        var parentId = item["parentId"]?.ToString();
-                        if (removedIds.Contains(parentId))
-                        {
-                            itemsToRemove.Add(item);
-                            foundMore = true;
-                        }
-                    }
-                }
-            }
-
-            Plugin.Log.LogDebug($"Removing {itemsToRemove.Count} existing inventory items");
-            foreach (var item in itemsToRemove)
-            {
-                itemsArray.Remove(item);
-            }
-
-            // ================================================================
-            // Add Snapshot Items
-            // Convert each snapshot item to a JObject and add to the profile
-            // Important: Remap parent IDs to use profile's Equipment ID
-            // ================================================================
-            int restoredCount = 0;
-
-            // Find the Equipment container ID from the snapshot
-            // We need this to remap parent references (M-01 FIX: use constant)
-            string snapshotEquipmentId = snapshot.Items
-                .FirstOrDefault(i => i.Tpl == TemplateIds.Equipment)?.Id;
-
-            if (string.IsNullOrEmpty(snapshotEquipmentId))
-            {
-                Plugin.Log.LogError("Could not find Equipment container in snapshot");
-                return false;
-            }
-
-            Plugin.Log.LogDebug($"Snapshot Equipment ID: {snapshotEquipmentId} -> Profile Equipment ID: {equipmentId}");
-
-            foreach (var snapshotItem in snapshot.Items)
-            {
-                // Skip the Equipment container itself (we keep the profile's original)
-                // M-01 FIX: use constant
-                if (snapshotItem.Tpl == TemplateIds.Equipment)
-                {
-                    continue;
-                }
-
-                // Create a JObject for this item
-                // Keep the same item ID to maintain parent-child relationships
-                var itemObject = new JObject
-                {
-                    ["_id"] = snapshotItem.Id,
-                    ["_tpl"] = snapshotItem.Tpl
-                };
-
-                // Remap parentId: snapshot Equipment -> profile Equipment
-                // Other parent IDs stay the same (maintains internal hierarchy)
-                if (snapshotItem.ParentId == snapshotEquipmentId)
-                {
-                    // Direct child of Equipment - use profile's Equipment ID
-                    itemObject["parentId"] = equipmentId;
-                }
-                else
-                {
-                    // Nested item (inside container, weapon mod, etc.)
-                    // Keep the original parent ID
-                    itemObject["parentId"] = snapshotItem.ParentId;
-                }
-
-                // Add slotId if present (equipment slot or grid ID)
-                if (!string.IsNullOrEmpty(snapshotItem.SlotId))
-                {
-                    itemObject["slotId"] = snapshotItem.SlotId;
-                }
-
-                // Add location if present (grid position for container items)
-                if (snapshotItem.Location != null)
-                {
-                    itemObject["location"] = JObject.FromObject(snapshotItem.Location);
-                }
-
-                // Add upd (update data) if present (stack count, durability, etc.)
-                if (snapshotItem.Upd != null)
-                {
-                    itemObject["upd"] = JObject.Parse(JsonConvert.SerializeObject(snapshotItem.Upd));
-                }
-
-                // Add to the profile's items array
-                itemsArray.Add(itemObject);
-                restoredCount++;
-            }
-
-            Plugin.Log.LogDebug($"Added {restoredCount} items from snapshot to profile");
-
-            // ================================================================
-            // Save Modified Profile
-            // ================================================================
-            string modifiedJson = profileObject.ToString(Formatting.Indented);
-            File.WriteAllText(profileFilePath, modifiedJson);
-
-            Plugin.Log.LogDebug($"Successfully restored inventory to profile: {Path.GetFileName(profileFilePath)}");
-            return true;
-        }
-        catch (Exception ex)
-        {
-            Plugin.Log.LogError($"Failed to restore inventory to profile: {ex.Message}");
-            Plugin.Log.LogError($"Stack trace: {ex.StackTrace}");
-            return false;
-        }
-    }
-
-    // ========================================================================
-    // Backup Management
-    // ========================================================================
-
-    /// <summary>
-    /// Creates a backup copy of a profile file before modification.
-    /// Backup files are named {original}_backup.json.
-    /// </summary>
-    /// <param name="profileFilePath">Full path to the profile file</param>
-    /// <remarks>
-    /// Backups are overwritten each time, keeping only the most recent.
-    /// These provide a safety net if restoration causes profile corruption.
-    /// </remarks>
-    private void CreateBackup(string profileFilePath)
-    {
-        try
-        {
-            string backupPath = profileFilePath.Replace(".json", "_backup.json");
-            File.Copy(profileFilePath, backupPath, overwrite: true);
-            Plugin.Log.LogDebug($"Created profile backup: {Path.GetFileName(backupPath)}");
-        }
-        catch (Exception ex)
-        {
-            // Non-critical error - warn but continue
-            Plugin.Log.LogWarning($"Failed to create profile backup: {ex.Message}");
         }
     }
 

@@ -10,7 +10,7 @@
 // is fully loaded into the game world.
 //
 // RESPONSIBILITIES:
-// 1. Reset the restoration flag for the new raid
+// 1. Reset the raid-end tracking flag for the new raid
 // 2. Get reference to the main player
 // 3. Attach KeybindMonitor component to the player's GameObject
 // 4. Initialize the KeybindMonitor with player and world references
@@ -99,7 +99,6 @@ public class GameStartPatch : ModulePatch
         try
         {
             // Reset flags for new raid
-            PostRaidInventoryPatch.ResetRestorationFlag();
             RaidEndPatch.ResetRaidEndFlag();
 
             var player = __instance.MainPlayer;
