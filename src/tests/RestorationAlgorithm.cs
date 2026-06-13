@@ -5,9 +5,10 @@
 // for unit testing. It uses test-friendly types with no SPT/BepInEx dependencies.
 //
 // HEALTHCARE-GRADE NOTE:
-// This is the canonical implementation of the restoration algorithm.
-// The production SnapshotRestorer should use identical logic.
-// Any divergence is a bug.
+// This file mirrors the production algorithm in src/servermod/SnapshotRestorer.cs,
+// which is the authoritative implementation. Any divergence is a bug: when the
+// production logic changes, update this file to match so the tests prove the
+// behavior that actually ships.
 //
 // INVARIANTS:
 // 1. Equipment container is never removed
@@ -506,21 +507,26 @@ public static class RestorationAlgorithm
             if (item.Tpl == AlgorithmConstants.EquipmentTemplateId)
                 continue;
 
+            // Skip items from non-managed slots.
+            // Mirrors production AddSnapshotItems (SnapshotRestorer.cs): the add phase
+            // consults ONLY includedSlotIds. Legacy snapshots (null includedSlotIds)
+            // never skip here; the legacy fallback sets (snapshot/empty) apply only to
+            // the removal phase via IsSlotManaged. Production also checks non-managed
+            // BEFORE duplicates, so the same order is used here.
+            if (snapshotSlotMap.TryGetValue(item.Id, out var rootSlot) &&
+                !string.IsNullOrEmpty(rootSlot) &&
+                slotSets.IncludedSlotIds != null &&
+                !slotSets.IncludedSlotIds.Contains(rootSlot))
+            {
+                nonManagedCount++;
+                continue;
+            }
+
             // Skip duplicates
             if (existingIds.Contains(item.Id))
             {
                 dupeCount++;
                 continue;
-            }
-
-            // Check if item is from a managed slot
-            if (snapshotSlotMap.TryGetValue(item.Id, out var rootSlot))
-            {
-                if (!IsSlotManaged(rootSlot, slotSets.IncludedSlotIds, slotSets.SnapshotSlotIds, slotSets.EmptySlotIds))
-                {
-                    nonManagedCount++;
-                    continue;
-                }
             }
 
             // Remap parent ID if it was the snapshot's Equipment container
